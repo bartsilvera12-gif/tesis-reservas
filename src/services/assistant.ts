@@ -26,6 +26,8 @@ export async function preguntarAlAsistente(
   mensajes: MensajeChat[],
   onFragmento: (texto: string) => void,
   signal?: AbortSignal,
+  /** Se llama cuando el servidor ya leyó los datos y está esperando a Claude. */
+  onListo?: () => void,
 ): Promise<void> {
   if (!URL_ASISTENTE) {
     throw new Error('El asistente no está configurado en esta instalación.');
@@ -86,6 +88,8 @@ export async function preguntarAlAsistente(
 
       if (evento === 'texto' && typeof payload === 'string') {
         onFragmento(payload);
+      } else if (evento === 'listo') {
+        onListo?.();
       } else if (evento === 'error') {
         throw new Error(
           (payload as { mensaje?: string })?.mensaje ?? 'El asistente tuvo un problema.',

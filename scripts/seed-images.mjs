@@ -98,12 +98,21 @@ function logoSvg({ emblema, bg, fg }) {
 /** Fotos originales del prototipo de Claude Design. */
 const SRC = 'https://d8j0ntlcm91z4.cloudfront.net/user_3EZufQH53g1was2DUGwVV5IRX0j';
 
+/**
+ * Foto de Unsplash (licencia libre, uso comercial sin atribución obligatoria).
+ * Un asado real en una estancia argentina: es la portada de Parrilla Don Aldo.
+ * https://unsplash.com/photos/TJ3CHS4HH2o — Paul (@paul_colorado)
+ */
+const FOTO_PARRILLA =
+  'https://images.unsplash.com/photo-1749429600130-d799b74f0a72?w=1600&q=85&fm=jpg';
+
 const PLAN = [
   { slug: 'la-cabana',         kind: 'cover', col: 'cover_url', url: `${SRC}/hf_20260806_162411_60ccd63c-095e-4220-af88-e80bf09f59bb.png` },
   { slug: 'la-cabana',         kind: 'logo',  col: 'logo_url',  url: `${SRC}/hf_20260806_163729_5ab287ee-a179-4bc1-b26f-392d5e25fbb9.png` },
   { slug: 'lupe-cafe',         kind: 'cover', col: 'cover_url', url: `${SRC}/hf_20260806_162411_c3359251-7f88-4cfe-a39e-cc2775eb0288.png` },
   { slug: 'barberia-el-prado', kind: 'cover', col: 'cover_url', url: `${SRC}/hf_20260806_162411_fce3e21f-3631-488f-a6e3-b90655524e8b.png` },
   { slug: 'aqua-spa-wellness', kind: 'cover', col: 'cover_url', url: `${SRC}/hf_20260806_162411_897493e5-415d-442f-ab52-02b1a7bd5f07.png` },
+  { slug: 'parrilla-don-aldo', kind: 'cover', col: 'cover_url', url: FOTO_PARRILLA },
 ];
 
 /** Portadas a 1200px (cubre pantallas 3x); logos a 320px. */
@@ -130,11 +139,14 @@ if (!token) {
 const db = new pg.Client({ connectionString: PG });
 await db.connect();
 
-const { rows } = await db.query(
-  `select id, slug from tesisreserva.businesses where slug = any($1)`,
-  [[...new Set(PLAN.map((p) => p.slug))]],
-);
+const { rows } = await db.query('select id, slug from tesisreserva.businesses');
 const idBySlug = Object.fromEntries(rows.map((r) => [r.slug, r.id]));
+// El negocio creado desde el onboarding lleva un sufijo aleatorio en el slug,
+// así que también se indexa por su prefijo.
+for (const r of rows) {
+  const base = r.slug.replace(/-[a-z0-9]{5}$/, '');
+  if (!(base in idBySlug)) idBySlug[base] = r.id;
+}
 
 const cache = join(root, 'node_modules', '.cache', 'tesisreserva-img');
 mkdirSync(cache, { recursive: true });

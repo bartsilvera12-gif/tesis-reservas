@@ -59,6 +59,26 @@ app.use(
   }),
 );
 
+/**
+ * Caché del contexto por usuario.
+ *
+ * Armarlo cuesta ~8 consultas a Supabase, que además vive en otra VPS. En una
+ * conversación las preguntas llegan seguidas y los datos no cambian entre una
+ * y otra, así que reusarlo saca ese tiempo de todas las repreguntas.
+ *
+ * La ventana es corta a propósito: si el usuario reserva algo y vuelve a
+ * preguntar, no queremos que el asistente le conteste con datos viejos.
+ */
+const CACHE_MS = Number(process.env.CONTEXT_CACHE_MS ?? 60_000);
+const cacheContexto = new Map<string, { en: number; ctx: Awaited<ReturnType<typeof construirContexto>> }>();
+
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [k, v] of cacheContexto) {
+    if (ahora - v.en > CACHE_MS) cacheContexto.delete(k);
+  }
+}, CACHE_MS).unref();
+
 /** Límite simple por usuario para que una sesión no se dispare en costo. */
 const ventanas = new Map<string, { desde: number; usos: number }>();
 const LIMITE = Number(process.env.RATE_LIMIT ?? 30);
@@ -118,14 +138,25 @@ app.post('/chat', async (req, res) => {
     return;
   }
 
+  const t0 = Date.now();
+  const claveCache = jwt.slice(-32);
+  const enCache = cacheContexto.get(claveCache);
+  const reusado = Boolean(enCache && Date.now() - enCache.en < CACHE_MS);
+
   let contexto;
   try {
-    contexto = await construirContexto(jwt);
+    if (reusado) {
+      contexto = enCache!.ctx;
+    } else {
+      contexto = await construirContexto(jwt);
+      cacheContexto.set(claveCache, { en: Date.now(), ctx: contexto });
+    }
   } catch (err) {
     console.error('Error armando el contexto:', err);
     res.status(502).json({ error: 'No pudimos leer tus datos. Probá de nuevo.' });
     return;
   }
+  const msContexto = Date.now() - t0;
 
   if (!contexto) {
     res.status(401).json({ error: 'Tu sesión expiró. Volvé a iniciar sesión.' });
@@ -153,6 +184,10 @@ app.post('/chat', async (req, res) => {
     res.write(`event: ${evento}\ndata: ${JSON.stringify(datos)}\n\n`);
   };
 
+  // Se manda apenas están los datos, antes de que Claude devuelva el primer
+  // token: al front le sirve para dejar de mostrar "pensando" en seco.
+  enviar('listo', { contextoMs: msContexto, cache: reusado });
+
   try {
     const stream = anthropic.messages.stream({
       model: MODELO,
@@ -170,7 +205,11 @@ app.post('/chat', async (req, res) => {
       messages: historial,
     });
 
-    stream.on('text', (fragmento) => enviar('texto', fragmento));
+    let msPrimerToken = 0;
+    stream.on('text', (fragmento) => {
+      if (!msPrimerToken) msPrimerToken = Date.now() - t0;
+      enviar('texto', fragmento);
+    });
 
     const final = await stream.finalMessage();
 
@@ -178,7 +217,13 @@ app.post('/chat', async (req, res) => {
       enviar('error', { mensaje: 'No puedo ayudarte con eso. Probá con otra consulta.' });
     }
 
-    enviar('fin', { uso: final.usage?.output_tokens ?? 0 });
+    enviar('fin', {
+      uso: final.usage?.output_tokens ?? 0,
+      contextoMs: msContexto,
+      primerTokenMs: msPrimerToken,
+      totalMs: Date.now() - t0,
+      cache: reusado,
+    });
     res.end();
   } catch (err) {
     console.error('Error de la API:', err);

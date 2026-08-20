@@ -37,6 +37,7 @@ export function HelpBubble() {
   const [mensajes, setMensajes] = useState<MensajeChat[]>([]);
   const [entrada, setEntrada] = useState('');
   const [pensando, setPensando] = useState(false);
+  const [etapa, setEtapa] = useState<'datos' | 'redactando'>('datos');
   const [error, setError] = useState<string | null>(null);
 
   const finRef = useRef<HTMLDivElement | null>(null);
@@ -71,6 +72,7 @@ export function HelpBubble() {
     const hilo: MensajeChat[] = [...mensajes, { role: 'user', content: pregunta }];
     // Se agrega la burbuja vacía del asistente y se va llenando con el stream.
     setMensajes([...hilo, { role: 'assistant', content: '' }]);
+    setEtapa('datos');
     setPensando(true);
 
     const controller = new AbortController();
@@ -90,6 +92,7 @@ export function HelpBubble() {
           });
         },
         controller.signal,
+        () => setEtapa('redactando'),
       );
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
@@ -287,7 +290,18 @@ export function HelpBubble() {
                   >
                     {m.content ||
                       (pensando && i === mensajes.length - 1 ? (
-                        <Spinner size={15} />
+                        <span
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            color: C.sub,
+                            fontSize: 13,
+                          }}
+                        >
+                          <Spinner size={14} />
+                          {etapa === 'datos' ? 'Revisando tus datos…' : 'Escribiendo…'}
+                        </span>
                       ) : null)}
                   </div>
                 ))}
