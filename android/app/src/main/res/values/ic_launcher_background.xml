@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Muestreado de assets/app-icon.png por scripts/gen-icons.mjs -->
+    <color name="ic_launcher_background">#AB5833</color>
+</resources>

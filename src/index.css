@@ -1,0 +1,187 @@
+/* ==========================================================================
+   AJ Spots — estilos globales
+   Mobile-first: sin frame fijo de 400x860, todo width:100% / min-height:100dvh
+   ========================================================================== */
+
+:root {
+  --t: #d98e73;
+  --td: #a9674c;
+  --ink: #3d322b;
+  --sub: #8c7c6d;
+  --line: #eae0d0;
+  --line-soft: #f5efe3;
+  --bg: #fbf7ee;
+  --cream: #f6ecdd;
+  --surface: #fff;
+  --gold: #d99a2b;
+  --danger: #c4554d;
+
+  /* Safe areas de Android/iOS (viewport-fit=cover) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  /* La app scrollea por dentro (<main>), nunca la página entera: es lo que
+     mantiene fija la navegación inferior. */
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Figtree, system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  /* Evita el rebote elástico que rompe la sensación de app nativa */
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100%;
+  /* Altura FIJA, no min-height: con min-height el contenedor crece con el
+     contenido y la barra inferior se va fuera de pantalla. */
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--td);
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  /* 16px evita el zoom automático de Android/iOS al enfocar un input */
+  font-size: 16px;
+  color: var(--ink);
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #a99a86;
+}
+
+/* Scrollbars ocultas (igual que el prototipo) */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+/* --------------------------------------------------------------------------
+   Animaciones del prototipo
+   -------------------------------------------------------------------------- */
+@keyframes pop {
+  0% {
+    transform: scale(0);
+  }
+  70% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Utilidades
+   -------------------------------------------------------------------------- */
+.no-scrollbar {
+  overflow: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hscroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+}
+
+/* Leaflet dentro del contenedor redondeado */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #f1e9da;
+  font-family: Figtree, system-ui, sans-serif;
+}
+
+.leaflet-control-attribution {
+  font-size: 9px;
+}
+
+/* --------------------------------------------------------------------------
+   Accesibilidad: respeta "reducir movimiento" del sistema.
+   Además sirve de red de seguridad: varias animaciones de entrada usan
+   fill-mode, así que si el navegador las frena (pestaña en segundo plano,
+   equipo lento) el contenido igual queda en su posición final y visible.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
