@@ -16,6 +16,13 @@ import { construirSystem } from './prompt.js';
 const PUERTO = Number(process.env.PORT ?? 8787);
 const MODELO = process.env.ANTHROPIC_MODEL ?? 'claude-opus-5';
 
+/**
+ * `output_config.effort` no existe en los modelos previos a la familia 4.6:
+ * Haiku 4.5 y Sonnet 4.5 devuelven 400 si se les manda. Se decide acá para
+ * poder cambiar de modelo por variable de entorno sin tocar el código.
+ */
+const ACEPTA_EFFORT = !/(haiku-4-5|sonnet-4-5|opus-4-1|claude-3)/.test(MODELO);
+
 for (const requerida of ['ANTHROPIC_API_KEY', 'SUPABASE_URL']) {
   if (!process.env[requerida]) {
     console.error(`Falta la variable de entorno ${requerida}.`);
@@ -151,7 +158,7 @@ app.post('/chat', async (req, res) => {
       model: MODELO,
       max_tokens: 2000,
       // El asistente resume datos y da consejos cortos: no hace falta más.
-      output_config: { effort: 'low' },
+      ...(ACEPTA_EFFORT ? { output_config: { effort: 'low' as const } } : {}),
       system: [
         {
           type: 'text',
@@ -194,5 +201,8 @@ app.post('/chat', async (req, res) => {
 });
 
 app.listen(PUERTO, () => {
-  console.log(`Asistente de AJ Spots escuchando en :${PUERTO} · modelo ${MODELO}`);
+  console.log(
+    `Asistente de AJ Spots escuchando en :${PUERTO} · modelo ${MODELO}` +
+      (ACEPTA_EFFORT ? " · effort low" : " · sin effort"),
+  );
 });
