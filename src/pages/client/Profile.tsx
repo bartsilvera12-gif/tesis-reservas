@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useToast } from '@/hooks/useToast';
 import { uploadAvatar } from '@/services/storage';
+import { LADO_AVATAR, prepararImagen } from '@/lib/image';
 import { countUnread } from '@/services/notifications';
 import { fetchMyReservations } from '@/services/reservations';
 import { Button, Field, PageTitle, Sheet, Spinner } from '@/components/ui';
@@ -62,7 +63,9 @@ export function Profile() {
     if (!file || !profile) return;
     setUploading(true);
     try {
-      const url = await uploadAvatar(profile.id, file);
+      // Un avatar de 512px alcanza de sobra; subir la foto original sería
+      // mandar varios MB para mostrarla en un círculo de 90px.
+      const url = await uploadAvatar(profile.id, await prepararImagen(file, LADO_AVATAR));
       await updateProfile({ avatar_url: url });
       toast.success('Foto actualizada.');
     } catch (err) {

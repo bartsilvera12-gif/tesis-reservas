@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
@@ -15,6 +15,7 @@ import { MapView } from '@/components/MapView';
 import { Button, Field, Loading, Spinner } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
 import { dayShort, slugify } from '@/lib/format';
+import { ErrorImagen, LADO_LOGO, LADO_PORTADA, prepararImagen } from '@/lib/image';
 import type { BusinessWithMeta, ReservationType } from '@/types/db';
 
 /**
@@ -266,6 +267,7 @@ export function OwnerOnboarding() {
 
             <ImagePicker
               label="Logo"
+              maxLado={LADO_LOGO}
               file={logoFile}
               onPick={setLogoFile}
               busy={uploading === 'logo'}
@@ -273,6 +275,7 @@ export function OwnerOnboarding() {
             />
             <ImagePicker
               label="Portada"
+              maxLado={LADO_PORTADA}
               file={coverFile}
               onPick={setCoverFile}
               busy={uploading === 'cover'}
@@ -525,14 +528,58 @@ function ImagePicker({
   onPick,
   busy,
   aspect,
+  maxLado,
 }: {
   label: string;
   file: File | null;
   onPick: (file: File | null) => void;
   busy: boolean;
   aspect: number;
+  maxLado: number;
 }) {
-  const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  const [procesando, setProcesando] = useState(false);
+  const [fallo, setFallo] = useState<string | null>(null);
+
+  // La URL se crea y se libera dentro del mismo efecto a propósito. Con
+  // `useMemo` para crearla y un efecto aparte para liberarla, React puede
+  // descartar el valor memorizado (o reejecutar el efecto en StrictMode) y
+  // queda una URL revocada apuntada por el `background`: la vista previa se
+  // ve en blanco y parece que la app se colgó. Sin liberarla, cada imagen
+  // probada queda retenida en memoria.
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  /**
+   * Se procesa apenas se elige, no al enviar el formulario: así el error de
+   * una foto que no sirve aparece en el momento y no después de haber
+   * completado los tres pasos.
+   */
+  async function elegir(elegido: File | undefined) {
+    if (!elegido) return;
+    setFallo(null);
+    setProcesando(true);
+    try {
+      onPick(await prepararImagen(elegido, maxLado));
+    } catch (err) {
+      onPick(null);
+      setFallo(
+        err instanceof ErrorImagen
+          ? err.message
+          : 'No pudimos usar esa imagen. Probá con otra.',
+      );
+    } finally {
+      setProcesando(false);
+    }
+  }
 
   return (
     <div>
@@ -555,9 +602,13 @@ function ImagePicker({
           type="file"
           accept="image/*"
           hidden
-          onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            void elegir(e.target.files?.[0]);
+            // Se limpia para que elegir la misma foto otra vez vuelva a disparar.
+            e.target.value = '';
+          }}
         />
-        {!preview && !busy && (
+        {!preview && !busy && !procesando && (
           <span
             style={{
               position: 'absolute',
@@ -573,21 +624,32 @@ function ImagePicker({
             Tocá para elegir una imagen
           </span>
         )}
-        {busy && (
+        {(busy || procesando) && (
           <span
             style={{
               position: 'absolute',
               inset: 0,
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
+              gap: 7,
               background: 'rgba(255,255,255,.7)',
             }}
           >
             <Spinner />
+            <span style={{ fontSize: 11.5, color: C.sub, fontWeight: 600 }}>
+              {procesando ? 'Preparando la imagen…' : 'Subiendo…'}
+            </span>
           </span>
         )}
       </label>
+
+      {fallo && (
+        <div style={{ marginTop: 6, fontSize: 12, color: C.danger, lineHeight: 1.45 }}>
+          {fallo}
+        </div>
+      )}
     </div>
   );
 }

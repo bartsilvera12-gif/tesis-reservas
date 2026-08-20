@@ -18,6 +18,7 @@ import {
   updateCatalogItem,
 } from '@/services/businesses';
 import { uploadBusinessImage } from '@/services/storage';
+import { LADO_LOGO, LADO_PORTADA, prepararImagen } from '@/lib/image';
 import {
   Button,
   Field,
@@ -76,7 +77,10 @@ function IdentityCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast:
     if (!file || !active) return;
     setBusy(kind);
     try {
-      const url = await uploadBusinessImage(active.id, file, kind);
+      // Se achica antes de subir: una foto de celular pesa varios MB y por
+      // datos móviles la subida cruda parece que se colgó.
+      const listo = await prepararImagen(file, kind === 'cover' ? LADO_PORTADA : LADO_LOGO);
+      const url = await uploadBusinessImage(active.id, listo, kind);
       await updateBusiness(active.id, kind === 'cover' ? { cover_url: url } : { logo_url: url });
       await onSaved();
       toast.success('Imagen actualizada.');

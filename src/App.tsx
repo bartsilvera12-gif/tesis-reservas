@@ -81,8 +81,18 @@ export default function App() {
 
             {/* ── Dueño ── */}
             <Route element={<OwnerRoute />}>
-              {/* El onboarding va fuera del layout: sin nav inferior */}
-              <Route path="/panel/configurar" element={<OwnerOnboarding />} />
+              {/* Sin nav inferior, pero SÍ dentro del shell: es lo que reserva
+                  el alto de la barra de estado y hace que el formulario
+                  scrollee. Colgado directo del router quedaba recortado por el
+                  `overflow:hidden` de #root y no se podía llegar al final. */}
+              <Route
+                path="/panel/configurar"
+                element={
+                  <AppShell>
+                    <OwnerOnboarding />
+                  </AppShell>
+                }
+              />
 
               <Route path="/panel" element={<OwnerLayout />}>
                 <Route index element={<OwnerDashboard />} />
