@@ -720,7 +720,7 @@ function CatalogCard({ toast }: { toast: Toast }) {
   }
 
   async function remove(item: CatalogItem) {
-    const ok = await confirm({
+    const { ok } = await confirm({
       title: '¿Eliminar del catálogo?',
       message: `"${item.name}" deja de mostrarse a los clientes. Las reservas que ya lo tenían no se modifican.`,
       confirmLabel: 'Eliminar',

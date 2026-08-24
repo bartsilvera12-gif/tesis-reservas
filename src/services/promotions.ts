@@ -92,11 +92,16 @@ export async function updatePromotion(
   return data as Promotion;
 }
 
-/** Baja lógica. */
-export async function deactivatePromotion(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('promotions')
-    .update({ active: false })
-    .eq('id', id);
+/**
+ * Borra la promoción.
+ *
+ * Es una baja real y no lógica porque el panel ya tiene un interruptor de
+ * pausa: si "Eliminar" sólo pusiera `active = false` haría exactamente lo
+ * mismo que pausar, la promo seguiría en la lista y el dueño no tendría
+ * ninguna forma de sacarla. Nada referencia a `promotions`, así que borrarla
+ * no deja huérfano a ningún dato histórico.
+ */
+export async function deletePromotion(id: string): Promise<void> {
+  const { error } = await supabase.from('promotions').delete().eq('id', id);
   if (error) throw new Error(friendlyError(error, 'No pudimos eliminar la promoción.'));
 }

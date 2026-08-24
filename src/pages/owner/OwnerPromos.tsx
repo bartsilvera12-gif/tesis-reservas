@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/useToast';
 import { useConfirm } from '@/hooks/useConfirm';
 import {
   createPromotion,
-  deactivatePromotion,
+  deletePromotion,
   fetchBusinessPromotions,
   updatePromotion,
 } from '@/services/promotions';
@@ -91,15 +91,15 @@ export function OwnerPromos() {
   }
 
   async function remove(promo: Promotion) {
-    const ok = await confirm({
+    const { ok } = await confirm({
       title: '¿Eliminar la promoción?',
-      message: `"${promo.title}" deja de aparecer en el inicio de los clientes.`,
+      message: `"${promo.title}" se borra para siempre. Si sólo querés sacarla del inicio por un tiempo, pausala.`,
       confirmLabel: 'Eliminar',
       danger: true,
     });
     if (!ok) return;
     try {
-      await deactivatePromotion(promo.id);
+      await deletePromotion(promo.id);
       query.reload();
       toast.success('Promoción eliminada.');
     } catch (err) {

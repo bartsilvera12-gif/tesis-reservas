@@ -1,4 +1,5 @@
 import { supabase, friendlyError } from '@/lib/supabase';
+import { todayISO } from '@/lib/format';
 import type {
   AvailabilitySlot,
   Reservation,
@@ -104,7 +105,9 @@ export async function fetchBusinessReservations(
     .eq('business_id', businessId);
 
   if (date) query = query.eq('reservation_date', date);
-  else query = query.gte('reservation_date', new Date().toISOString().slice(0, 10));
+  // `toISOString()` da la fecha en UTC, que en Paraguay ya es mañana a partir
+  // de las 20:00: justo a la hora pico se perdían las reservas de esa noche.
+  else query = query.gte('reservation_date', todayISO());
 
   const { data, error } = await query
     .order('reservation_date')

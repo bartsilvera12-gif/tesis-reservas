@@ -7,6 +7,20 @@ interface Pedido {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  /** Si se define, el diálogo pide además un texto libre (ej. un motivo). */
+  prompt?: { label: string; placeholder?: string; maxLength?: number };
+}
+
+/**
+ * Lo que devuelve el diálogo.
+ *
+ * `texto` sólo viene cuando el pedido incluía `prompt`. Se deja vacío si el
+ * usuario no escribió nada: el motivo es opcional, no queremos bloquear a
+ * alguien que sólo quiere rechazar y seguir.
+ */
+export interface Respuesta {
+  ok: boolean;
+  texto: string;
 }
 
 /**
@@ -18,20 +32,26 @@ interface Pedido {
  */
 export function useConfirm() {
   const [pedido, setPedido] = useState<Pedido | null>(null);
-  const resolver = useRef<((ok: boolean) => void) | null>(null);
+  const [texto, setTexto] = useState('');
+  const resolver = useRef<((r: Respuesta) => void) | null>(null);
 
   const confirm = useCallback((p: Pedido) => {
+    setTexto('');
     setPedido(p);
-    return new Promise<boolean>((resolve) => {
+    return new Promise<Respuesta>((resolve) => {
       resolver.current = resolve;
     });
   }, []);
 
-  const cerrar = useCallback((ok: boolean) => {
-    setPedido(null);
-    resolver.current?.(ok);
-    resolver.current = null;
-  }, []);
+  const cerrar = useCallback(
+    (ok: boolean) => {
+      setPedido(null);
+      resolver.current?.({ ok, texto: texto.trim() });
+      resolver.current = null;
+      setTexto('');
+    },
+    [texto],
+  );
 
   const node = pedido ? (
     <div
@@ -75,6 +95,37 @@ export function useConfirm() {
             }}
           >
             {pedido.message}
+          </div>
+        )}
+
+        {pedido.prompt && (
+          <div style={{ marginTop: 14 }}>
+            <label
+              htmlFor="confirm-prompt"
+              style={{ fontSize: 12.5, fontWeight: 700, display: 'block', marginBottom: 6 }}
+            >
+              {pedido.prompt.label}
+            </label>
+            <textarea
+              id="confirm-prompt"
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              rows={3}
+              maxLength={pedido.prompt.maxLength ?? 200}
+              placeholder={pedido.prompt.placeholder}
+              style={{
+                width: '100%',
+                resize: 'none',
+                border: `1.5px solid ${C.line}`,
+                borderRadius: 12,
+                padding: '10px 12px',
+                // 16px evita que iOS haga zoom al enfocar el campo.
+                fontSize: 16,
+                fontFamily: FONT.sans,
+                background: C.bg,
+                color: C.ink,
+              }}
+            />
           </div>
         )}
 

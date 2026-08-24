@@ -20,6 +20,42 @@ set local search_path = tesisreserva, public, extensions;
 -- 0. Utilidades
 -- ---------------------------------------------------------------------------
 
+-- Zona horaria de la aplicación.
+--
+-- La instancia de Supabase es COMPARTIDA con otros proyectos y corre en UTC,
+-- así que no se puede tocar el timezone del servidor. Pero los usuarios están
+-- en Paraguay y `reservation_date`/`reservation_time` guardan la hora local
+-- del negocio, no UTC. Sin estos helpers pasan dos cosas concretas:
+--
+--   · `current_date` cambia de día a las 20:00 hora paraguaya, así que a la
+--     noche (el horario de más movimiento en un restaurante) el panel del
+--     dueño mostraba las reservas de mañana como si fueran las de hoy.
+--   · comparar `reservation_date + reservation_time` contra `now()` trata la
+--     hora local como si fuera UTC: a las 17:00 de Paraguay el sistema decía
+--     que una mesa para las 20:00 de esa misma noche "ya pasó".
+--
+-- Todo el schema usa estas dos funciones en lugar de `current_date` y `now()`
+-- para cualquier cuenta que involucre la agenda.
+create or replace function tesisreserva.zona_horaria()
+returns text
+language sql
+immutable
+as $$ select 'America/Asuncion'::text $$;
+
+/** Fecha de hoy en Paraguay. */
+create or replace function tesisreserva.hoy()
+returns date
+language sql
+stable
+as $$ select (now() at time zone tesisreserva.zona_horaria())::date $$;
+
+/** Momento actual como hora de pared paraguaya, comparable con date + time. */
+create or replace function tesisreserva.ahora_local()
+returns timestamp
+language sql
+stable
+as $$ select (now() at time zone tesisreserva.zona_horaria()) $$;
+
 -- Trigger genérico para mantener updated_at
 create or replace function tesisreserva.set_updated_at()
 returns trigger
@@ -966,7 +1002,7 @@ begin
     tk.t                                as slot_time,
     greatest(v_capacity - tk.used, 0)   as remaining,
     (v_capacity - tk.used) > 0
-      and (p_date + tk.t) > now()       as available
+      and (p_date + tk.t) > tesisreserva.ahora_local() as available
   from taken tk
   order by tk.t;
 end;
@@ -1014,7 +1050,7 @@ begin
     raise exception 'El negocio no está disponible.' using errcode = 'P0002';
   end if;
 
-  if p_date < current_date then
+  if p_date < tesisreserva.hoy() then
     raise exception 'No se puede reservar en una fecha pasada.' using errcode = '22007';
   end if;
 
@@ -1047,7 +1083,7 @@ begin
     raise exception 'El horario elegido está fuera del horario de atención.' using errcode = '22023';
   end if;
 
-  if (p_date + p_time) <= now() then
+  if (p_date + p_time) <= tesisreserva.ahora_local() then
     raise exception 'Ese horario ya pasó. Elegí otro.' using errcode = '22007';
   end if;
 
@@ -1190,6 +1226,26 @@ begin
     raise exception 'La reserva ya está %.', v_res.status using errcode = '22023';
   end if;
 
+  -- Marcar asistencia es registrar algo que ya ocurrió, así que tiene dos
+  -- condiciones que el resto de los estados no tienen.
+  if p_status in ('completed', 'no_show') then
+    -- 1. Sólo desde 'confirmed'. Cerrar una reserva que nunca se confirmó
+    --    deja al cliente con un "no asistió" a algo que el local nunca le
+    --    aceptó, y además saltea el aviso de confirmación.
+    if v_res.status <> 'confirmed' then
+      raise exception 'Primero confirmá la reserva.' using errcode = '22023';
+    end if;
+
+    -- 2. Sólo una vez llegada la hora. La media hora de tolerancia es para
+    --    quien llega antes: sin ella, marcar a un cliente puntual que se
+    --    presenta 10 minutos temprano daría error.
+    if (v_res.reservation_date + v_res.reservation_time)
+         > tesisreserva.ahora_local() + interval '30 minutes' then
+      raise exception 'Todavía no podés marcar la asistencia: esa reserva aún no ocurrió.'
+        using errcode = '22023';
+    end if;
+  end if;
+
   v_prev := v_res.status;
 
   update tesisreserva.reservations
@@ -1219,18 +1275,23 @@ begin
                 else 'general'
               end;
 
+    -- El motivo va en el aviso. Sin esto el cliente se entera de que le
+    -- rechazaron la reserva pero no de por qué, y el texto que escribió el
+    -- dueño quedaba guardado sin que nadie lo leyera nunca.
     insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
     values (
       v_res.client_id, v_title,
       v_biz.name || ' · ' || to_char(v_res.reservation_date, 'DD/MM') ||
-        ' ' || to_char(v_res.reservation_time, 'HH24:MI') || ' h',
+        ' ' || to_char(v_res.reservation_time, 'HH24:MI') || ' h' ||
+        coalesce(' — ' || v_res.cancellation_reason, ''),
       v_type, v_res.id
     );
   else
     insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
     values (
       v_biz.owner_id, 'Reserva cancelada por el cliente',
-      to_char(v_res.reservation_date, 'DD/MM') || ' ' || to_char(v_res.reservation_time, 'HH24:MI') || ' h',
+      to_char(v_res.reservation_date, 'DD/MM') || ' ' || to_char(v_res.reservation_time, 'HH24:MI') || ' h' ||
+        coalesce(' — ' || v_res.cancellation_reason, ''),
       'reservation_cancelled', v_res.id
     );
   end if;
@@ -1306,18 +1367,18 @@ begin
   select jsonb_build_object(
     'today_count', (
       select count(*) from tesisreserva.reservations
-      where business_id = p_business_id and reservation_date = current_date
+      where business_id = p_business_id and reservation_date = tesisreserva.hoy()
         and status in ('pending', 'confirmed', 'completed')
     ),
     'pending_count', (
       select count(*) from tesisreserva.reservations
       where business_id = p_business_id and status = 'pending'
-        and reservation_date >= current_date
+        and reservation_date >= tesisreserva.hoy()
     ),
     'confirmed_count', (
       select count(*) from tesisreserva.reservations
       where business_id = p_business_id and status = 'confirmed'
-        and reservation_date >= current_date
+        and reservation_date >= tesisreserva.hoy()
     ),
     'active_promotions', (
       select count(*) from tesisreserva.promotions
@@ -1348,7 +1409,7 @@ begin
                (select count(*) from tesisreserva.reservations r
                  where r.business_id = p_business_id
                    and r.status in ('pending', 'confirmed', 'completed')
-                   and r.reservation_date >= current_date - interval '28 days'
+                   and r.reservation_date >= tesisreserva.hoy() - interval '28 days'
                    and extract(dow from r.reservation_date)::int = g.dow)::int as c
         from generate_series(0, 6) as g(dow)
       ) d
@@ -1358,7 +1419,7 @@ begin
       from tesisreserva.reservations
       where business_id = p_business_id
         and status in ('pending', 'confirmed', 'completed')
-        and reservation_date >= current_date - interval '60 days'
+        and reservation_date >= tesisreserva.hoy() - interval '60 days'
       group by reservation_time
       order by count(*) desc, reservation_time
       limit 1
@@ -1411,7 +1472,7 @@ as $$
         select 1 from tesisreserva.reservations r2
         where r2.business_id = b.id
           and r2.client_id = auth.uid()
-          and r2.reservation_date >= current_date
+          and r2.reservation_date >= tesisreserva.hoy()
           and r2.status in ('pending', 'confirmed')
       )
   )

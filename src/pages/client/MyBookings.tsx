@@ -64,7 +64,7 @@ export function MyBookings() {
   const list = filter === 'upcoming' ? upcoming : past;
 
   async function onCancel(reservation: ReservationWithRelations) {
-    const ok = await confirm({
+    const { ok } = await confirm({
       title: '¿Cancelar la reserva?',
       message: `Vas a cancelar tu reserva en ${reservation.business?.name ?? 'este negocio'}. No se puede deshacer.`,
       confirmLabel: 'Sí, cancelar',
@@ -207,6 +207,25 @@ export function MyBookings() {
                   </span>
                 )}
               </div>
+
+              {/* Cuando el negocio explica por qué rechazó o canceló, el cliente
+                  tiene que poder leerlo: el chip de estado solo no alcanza. */}
+              {r.cancellation_reason &&
+                (r.status === 'rejected' || r.status === 'cancelled') && (
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      color: '#5C5044',
+                      background: C.bg,
+                      borderRadius: 8,
+                      padding: '8px 10px',
+                      marginTop: 8,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <strong style={{ fontWeight: 700 }}>Motivo:</strong> {r.cancellation_reason}
+                  </div>
+                )}
 
               {(r.status === 'pending' || r.status === 'confirmed') && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>

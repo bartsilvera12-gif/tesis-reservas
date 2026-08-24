@@ -1,31 +1,77 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useToast } from '@/hooks/useToast';
+import { useConfirm } from '@/hooks/useConfirm';
 import { fetchBusinessReservations, setReservationStatus } from '@/services/reservations';
 import { Chip, Loading, PageTitle, StateView, StatusChip } from '@/components/ui';
 import { C } from '@/lib/theme';
 import { dayShort, money, shortTime, toISODate } from '@/lib/format';
 import type { ReservationStatus } from '@/types/db';
 
-/** Próximos 7 días para el filtro por fecha. */
-function nextDays(count = 7): Date[] {
+/**
+ * Días del filtro: una semana hacia atrás y una hacia adelante.
+ *
+ * Los días pasados no son un adorno. Marcar "asistió" / "no asistió" sólo se
+ * puede hacer DESPUÉS de que la reserva ocurrió, así que sin acceso al pasado
+ * las reservas de ayer quedaban confirmadas para siempre y no había forma de
+ * cerrarlas desde la app.
+ */
+const DIAS_ATRAS = 7;
+const DIAS_ADELANTE = 7;
+
+function rangoDeDias(): Date[] {
   const base = new Date();
   base.setHours(0, 0, 0, 0);
-  return Array.from({ length: count }, (_, i) => {
+  return Array.from({ length: DIAS_ATRAS + 1 + DIAS_ADELANTE }, (_, i) => {
     const d = new Date(base);
-    d.setDate(base.getDate() + i);
+    d.setDate(base.getDate() + i - DIAS_ATRAS);
     return d;
   });
 }
 
+/**
+ * Espejo de la regla del servidor: la asistencia se marca recién cuando la
+ * reserva ocurrió, con media hora de tolerancia para quien llega antes.
+ *
+ * Se repite acá para no ofrecer un botón que la base va a rechazar. La
+ * validación de verdad sigue siendo la de `set_reservation_status`; esto es
+ * sólo para no mostrarle al dueño una acción que no puede hacer todavía.
+ */
+const TOLERANCIA_MIN = 30;
+
+function yaOcurrio(fecha: string, hora: string): boolean {
+  const inicio = new Date(`${fecha}T${hora}`);
+  if (Number.isNaN(inicio.getTime())) return false;
+  return Date.now() >= inicio.getTime() - TOLERANCIA_MIN * 60_000;
+}
+
+/** Lo que se le dice al dueño según lo que acaba de hacer. */
+const AVISO: Partial<Record<ReservationStatus, string>> = {
+  confirmed: 'Reserva confirmada.',
+  rejected: 'Reserva rechazada.',
+  cancelled: 'Reserva cancelada.',
+  completed: 'Marcada como asistida.',
+  no_show: 'Marcada como no asistió.',
+};
+
 export function OwnerReservations() {
   const { active } = useOwnerBusiness();
   const toast = useToast();
+  const { confirm, node: confirmNode } = useConfirm();
 
-  const days = useMemo(() => nextDays(7), []);
-  const [date, setDate] = useState(() => toISODate(days[0]));
+  const days = useMemo(() => rangoDeDias(), []);
+  const hoy = useMemo(() => toISODate(new Date()), []);
+  const [date, setDate] = useState(hoy);
   const [working, setWorking] = useState<string | null>(null);
+
+  // La tira arranca una semana atrás, así que sin esto el dueño entra mirando
+  // el lunes pasado. Se lleva "Hoy" al centro apenas se monta la pantalla.
+  const tira = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const chip = tira.current?.children[DIAS_ATRAS] as HTMLElement | undefined;
+    chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, []);
 
   const query = useAsync(
     () => fetchBusinessReservations(active!.id, date),
@@ -35,17 +81,39 @@ export function OwnerReservations() {
 
   const list = query.data ?? [];
 
-  async function act(id: string, status: ReservationStatus) {
+  /**
+   * Rechazar le llega al cliente como una notificación. Sin motivo se entera
+   * de que no hay lugar pero no de por qué, así que se le ofrece al dueño
+   * escribirlo. Es opcional: no queremos frenar a quien sólo quiere rechazar.
+   */
+  async function rechazar(id: string) {
+    const { ok, texto } = await confirm({
+      title: '¿Rechazar la reserva?',
+      message: 'El cliente recibe un aviso. Contarle el motivo evita que vuelva a intentar lo mismo.',
+      confirmLabel: 'Rechazar',
+      cancelLabel: 'Volver',
+      danger: true,
+      prompt: {
+        label: 'Motivo (opcional)',
+        placeholder: 'Ej: no tenemos mesa para ese horario',
+        maxLength: 200,
+      },
+    });
+    if (!ok) return;
+    await act(id, 'rejected', texto || undefined);
+  }
+
+  async function act(id: string, status: ReservationStatus, reason?: string) {
     setWorking(id);
     try {
-      await setReservationStatus(id, status);
+      await setReservationStatus(id, status, reason);
 
       // Refresco inmediato en pantalla tras la respuesta correcta del servidor.
       query.setData((prev) =>
         prev ? prev.map((r) => (r.id === id ? { ...r, status } : r)) : prev,
       );
 
-      toast.success(status === 'confirmed' ? 'Reserva confirmada.' : 'Reserva rechazada.');
+      toast.success(AVISO[status] ?? 'Reserva actualizada.');
     } catch (err) {
       toast.fail(err instanceof Error ? err.message : 'No pudimos actualizar la reserva.');
       query.reload();
@@ -60,14 +128,14 @@ export function OwnerReservations() {
     <div style={{ paddingBottom: 24 }}>
       <PageTitle>Reservas</PageTitle>
 
-      <div className="hscroll" style={{ padding: '0 20px 12px' }}>
+      <div ref={tira} className="hscroll" style={{ padding: '0 20px 12px' }}>
         {days.map((d) => {
           const iso = toISODate(d);
           return (
             <Chip
               key={iso}
               label={
-                iso === toISODate(days[0])
+                iso === hoy
                   ? `Hoy · ${dayShort(d.getDay())} ${d.getDate()}`
                   : `${dayShort(d.getDay())} ${d.getDate()}`
               }
@@ -201,7 +269,7 @@ export function OwnerReservations() {
                   </button>
                   <button
                     disabled={working === r.id}
-                    onClick={() => void act(r.id, 'rejected')}
+                    onClick={() => void rechazar(r.id)}
                     style={{
                       flex: 1,
                       border: `1.5px solid ${C.line}`,
@@ -219,7 +287,13 @@ export function OwnerReservations() {
                 </div>
               )}
 
-              {r.status === 'confirmed' && (
+              {r.status === 'confirmed' && !yaOcurrio(r.reservation_date, r.reservation_time) && (
+                <div style={{ fontSize: 11.5, color: C.sub, marginTop: 10, lineHeight: 1.45 }}>
+                  Vas a poder marcar la asistencia cuando llegue el horario.
+                </div>
+              )}
+
+              {r.status === 'confirmed' && yaOcurrio(r.reservation_date, r.reservation_time) && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                   <button
                     disabled={working === r.id}
@@ -260,6 +334,7 @@ export function OwnerReservations() {
         </div>
       )}
 
+      {confirmNode}
       {toast.node}
     </div>
   );
