@@ -292,9 +292,19 @@ try {
   await expectFail('no se puede reservar fuera de horario',
     `select tesisreserva.create_reservation($1,$2,'03:00',2,null,null)`, [biz, dateISO]);
 
+  // La regla ya no es "un dueño no puede reservar" sino "no en su propio
+  // negocio": ahora un mismo correo sirve para vender y para reservar.
   await asUser(owner);
-  await expectFail('una cuenta de negocio no puede reservar',
+  await expectFail('nadie se reserva una mesa en su propio negocio',
     `select tesisreserva.create_reservation($1,$2,'21:00',4,null,null)`, [biz, dateISO]);
+
+  // owner2 tiene su propio local, así que acá actúa como cliente cualquiera.
+  await asUser(owner2);
+  const reservaCruzada = await c.query(
+    `select (tesisreserva.create_reservation($1,$2,'21:00',4,null,null)).reservation_code as cod`,
+    [biz, dateISO]);
+  ok('un dueño SÍ puede reservar en el local de otro',
+    Boolean(reservaCruzada.rows[0].cod), `(${reservaCruzada.rows[0].cod})`);
 
   console.log('\n--- 14. El role no se puede cambiar desde el cliente ---');
   await asUser(cliA);

@@ -499,6 +499,66 @@ try {
     `(${estaNoche.rows[0].n} turnos)`,
   );
 
+  console.log('\n--- 10. Un solo correo, los dos modos ---');
+
+  // Karen se registro como CLIENTE. Quiere publicar su negocio sin abrir
+  // otra cuenta con otro correo.
+  await asUser(cliente);
+  const antes = await c.query(
+    `select role, is_owner from tesisreserva.profiles where id=$1`, [cliente]);
+  ok('arranca como cliente sin modo negocio',
+     antes.rows[0].role === 'client' && antes.rows[0].is_owner === false);
+
+  await debeFallar(
+    'un cliente NO puede crear un negocio antes de activarlo',
+    `insert into tesisreserva.businesses (owner_id, category_id, name, slug, city,
+       reservation_type, default_slot_duration_minutes, slot_step_minutes, active)
+     values ($1,$2,'Prematuro','prematuro','Asuncion','table',60,30,true)`,
+    [cliente, cat],
+  );
+
+  await debeFallar(
+    'NO puede activarse el modo negocio por UPDATE directo',
+    `update tesisreserva.profiles set is_owner = true where id=$1`,
+    [cliente],
+  );
+
+  await debeAndar('activa el modo negocio por la RPC', `select tesisreserva.become_owner()`);
+
+  const luego = await c.query(
+    `select role, is_owner from tesisreserva.profiles where id=$1`, [cliente]);
+  ok('ahora puede tener negocios', luego.rows[0].is_owner === true);
+  ok('y NO se auto-ascendio de rol', luego.rows[0].role === 'client', `(${luego.rows[0].role})`);
+
+  const propio = await debeAndar(
+    'ya puede publicar su negocio con el mismo correo',
+    `insert into tesisreserva.businesses (owner_id, category_id, name, slug, city,
+       reservation_type, default_slot_duration_minutes, slot_step_minutes, active,
+       latitude, longitude)
+     values ($1,$2,'Lo de Karen','lo-de-karen','Asuncion','table',60,30,true,-25.3,-57.6)
+     returning id`,
+    [cliente, cat],
+  );
+
+  // Y lo importante: sigue siendo cliente. Antes, ser dueno lo impedia.
+  await debeAndar(
+    'y SIGUE pudiendo reservar en otros locales',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy() + 1, '20:00', 2, null, null)`,
+    [biz],
+  );
+
+  await debeFallar(
+    'pero NO puede reservarse una mesa en su propio negocio',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy() + 1, '20:00', 2, null, null)`,
+    [propio?.rows[0].id],
+  );
+
+  await debeFallar(
+    'nadie se vuelve admin por este camino',
+    `update tesisreserva.profiles set role='admin' where id=$1`,
+    [cliente],
+  );
+
   console.log(`\n==========  ${pass} PASS  /  ${fail} FAIL  ==========`);
   if (fallos.length) {
     console.log('\nFallaron:');

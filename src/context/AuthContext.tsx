@@ -93,6 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           full_name: typeof meta.full_name === 'string' ? meta.full_name : '',
           email: email ?? userData.user?.email ?? null,
           role,
+          // Quien se registró como dueño arranca con el modo negocio puesto.
+          is_owner: role === 'owner',
           city: typeof meta.city === 'string' && meta.city ? meta.city : 'Asunción',
         },
         { onConflict: 'id' },

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
 import { useAsync } from '@/hooks/useAsync';
@@ -1070,6 +1071,7 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
 
 function AccountCard() {
   const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <Card>
@@ -1079,8 +1081,38 @@ function AccountCard() {
       </div>
       <div style={{ fontSize: 12, color: C.sub, marginTop: 1 }}>{profile?.email}</div>
       <div style={{ fontSize: 11.5, color: C.sub, marginTop: 6, lineHeight: 1.45 }}>
-        Cuenta de <strong>dueño de negocio</strong>. El tipo de cuenta no se puede cambiar.
+        Este mismo correo te sirve para las dos cosas: gestionar tu negocio y reservar
+        en otros locales.
       </div>
+
+      <button
+        onClick={() => navigate('/app')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          marginTop: 12,
+          minHeight: 46,
+          borderRadius: 12,
+          border: `1px solid ${C.terracotta}`,
+          background: C.cream,
+          color: C.terracottaDark,
+          fontSize: 13.5,
+          fontWeight: 800,
+          padding: '0 14px',
+        }}
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M12 2 2 8.5V21h7v-6h6v6h7V8.5z"
+            fill="none"
+            stroke={C.terracottaDark}
+            strokeWidth="2"
+          />
+        </svg>
+        Explorar como cliente
+      </button>
 
       <button
         onClick={() => void signOut()}

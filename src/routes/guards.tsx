@@ -62,24 +62,26 @@ export function RequireAuth() {
 }
 
 /**
- * Zona del cliente. Un `owner` que escriba /app a mano cae en su panel:
- * la protección real igual la hace RLS en la base.
+ * Zona del cliente: la usa cualquiera con sesión.
+ *
+ * Ya no rebota a quien tiene negocio. Con un solo correo para las dos cosas,
+ * un dueño entrando a /app está haciendo justamente lo que corresponde:
+ * mirar la app como cliente.
  */
 export function ClientRoute() {
   const { profile } = useAuth();
   if (!profile) return <Splash />;
-  if (profile.role === 'owner') return <Navigate to="/panel" replace />;
   return <Outlet />;
 }
 
 /**
- * Zona del dueño. Además del rol, valida el onboarding: si todavía no tiene
- * ningún negocio, lo manda a configurarlo.
+ * Zona del dueño. Exige tener el modo negocio activado y, además, valida el
+ * onboarding: si todavía no tiene ningún local, lo manda a configurarlo.
  */
 export function OwnerRoute() {
   const { profile } = useAuth();
   if (!profile) return <Splash />;
-  if (profile.role === 'client') return <Navigate to="/app" replace />;
+  if (!profile.is_owner) return <Navigate to="/app" replace />;
 
   return (
     <OwnerBusinessProvider>
@@ -131,7 +133,7 @@ export function RoleRedirect() {
   if (!session) return <Navigate to="/bienvenida" replace />;
   if (!profile) return <Splash />;
 
-  return <Navigate to={profile.role === 'owner' ? '/panel' : '/app'} replace />;
+  return <Navigate to={profile.is_owner ? '/panel' : '/app'} replace />;
 }
 
 /** Pantallas de auth: si ya hay sesión, no tiene sentido mostrarlas. */
@@ -140,7 +142,7 @@ export function PublicOnly() {
 
   if (loading) return <Splash />;
   if (session && profile) {
-    return <Navigate to={profile.role === 'owner' ? '/panel' : '/app'} replace />;
+    return <Navigate to={profile.is_owner ? '/panel' : '/app'} replace />;
   }
   return <Outlet />;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
   asistenteDisponible,
@@ -33,6 +34,7 @@ const SUGERENCIAS: Record<'client' | 'owner', string[]> = {
  */
 export function HelpBubble() {
   const { profile } = useAuth();
+  const location = useLocation();
   const [abierto, setAbierto] = useState(false);
   const [mensajes, setMensajes] = useState<MensajeChat[]>([]);
   const [entrada, setEntrada] = useState('');
@@ -43,7 +45,11 @@ export function HelpBubble() {
   const finRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const rol: 'client' | 'owner' = profile?.role === 'owner' ? 'owner' : 'client';
+  // Se mira la ruta y no la cuenta: quien tiene los dos modos espera
+  // atajos de negocio en el panel y de cliente cuando está explorando.
+  const rol: 'client' | 'owner' = location.pathname.startsWith('/panel')
+    ? 'owner'
+    : 'client';
 
   // Cada mensaje nuevo lleva la vista al final.
   useEffect(() => {

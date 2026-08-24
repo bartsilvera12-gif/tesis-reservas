@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useToast } from '@/hooks/useToast';
+import { useConfirm } from '@/hooks/useConfirm';
 import { uploadAvatar } from '@/services/storage';
 import { LADO_AVATAR, prepararImagen } from '@/lib/image';
+import { becomeOwner } from '@/services/profiles';
 import { countUnread } from '@/services/notifications';
 import { fetchMyReservations } from '@/services/reservations';
 import { Button, Field, PageTitle, Sheet, Spinner } from '@/components/ui';
@@ -13,9 +15,10 @@ import { initials } from '@/lib/format';
 import { ICONS } from '@/components/BottomNav';
 
 export function Profile() {
-  const { profile, updateProfile, signOut } = useAuth();
+  const { profile, updateProfile, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
+  const { confirm, node: confirmNode } = useConfirm();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const [editing, setEditing] = useState(false);
@@ -24,6 +27,7 @@ export function Profile() {
   const [city, setCity] = useState(profile?.city ?? '');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [activando, setActivando] = useState(false);
 
   const unreadQuery = useAsync(
     () => countUnread(profile!.id),
@@ -72,6 +76,36 @@ export function Profile() {
       toast.fail(err instanceof Error ? err.message : 'No pudimos subir tu foto.');
     } finally {
       setUploading(false);
+    }
+  }
+
+  /**
+   * Activa el modo negocio sin abrir otra cuenta.
+   *
+   * El correo es único en Supabase, así que registrarse de nuevo como dueño
+   * devolvía "ese email ya tiene una cuenta". Ahora la misma cuenta suma la
+   * capacidad y se sigue derecho al onboarding.
+   */
+  async function activarNegocio() {
+    const { ok } = await confirm({
+      title: '¿Publicar tu negocio?',
+      message:
+        'Tu cuenta suma el panel de negocio y podés cambiar entre los dos modos cuando quieras. Seguís pudiendo reservar en otros locales con este mismo correo.',
+      confirmLabel: 'Sí, empezar',
+      cancelLabel: 'Ahora no',
+    });
+    if (!ok) return;
+
+    setActivando(true);
+    try {
+      await becomeOwner();
+      // Sin esto el guard sigue viendo la cuenta como cliente y rebota.
+      await refreshProfile();
+      navigate('/panel', { replace: true });
+    } catch (err) {
+      toast.fail(err instanceof Error ? err.message : 'No pudimos activar el modo negocio.');
+    } finally {
+      setActivando(false);
     }
   }
 
@@ -213,6 +247,78 @@ export function Profile() {
           </button>
         ))}
 
+        {/* Una cuenta, los dos modos. Lo que se muestra depende de si el
+            negocio ya está activado o todavía no. */}
+        {profile.is_owner ? (
+          <button
+            onClick={() => navigate('/panel')}
+            style={{
+              background: C.cream,
+              border: `1px solid ${C.terracotta}`,
+              borderRadius: 12,
+              padding: '15px 16px',
+              fontSize: 14,
+              fontWeight: 800,
+              color: C.terracottaDark,
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M4 21V9l8-6 8 6v12h-6v-6h-4v6z"
+                fill={C.terracottaDark}
+              />
+            </svg>
+            Ir al panel de mi negocio
+          </button>
+        ) : (
+          <button
+            onClick={() => void activarNegocio()}
+            disabled={activando}
+            style={{
+              background: C.surface,
+              border: `1px dashed ${C.terracotta}`,
+              borderRadius: 12,
+              padding: '15px 16px',
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              opacity: activando ? 0.6 : 1,
+            }}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 21V9l8-6 8 6v12h-6v-6h-4v6z" fill={C.terracotta} />
+            </svg>
+            <span style={{ minWidth: 0 }}>
+              <span
+                style={{
+                  display: 'block',
+                  fontSize: 14,
+                  fontWeight: 800,
+                  color: C.terracottaDark,
+                }}
+              >
+                {activando ? 'Activando…' : 'Tengo un negocio'}
+              </span>
+              <span
+                style={{
+                  display: 'block',
+                  fontSize: 12,
+                  color: C.sub,
+                  lineHeight: 1.4,
+                  marginTop: 2,
+                }}
+              >
+                Publicalo con esta misma cuenta, sin otro correo.
+              </span>
+            </span>
+          </button>
+        )}
+
         <button
           onClick={() => void signOut()}
           style={{
@@ -299,6 +405,7 @@ export function Profile() {
         </div>
       </Sheet>
 
+      {confirmNode}
       {toast.node}
     </div>
   );

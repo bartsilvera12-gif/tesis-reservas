@@ -148,7 +148,9 @@ export function Register() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          {/* Selección obligatoria del tipo de cuenta — se elige una sola vez */}
+          {/* Con qué intención se registra. No es una puerta cerrada: define
+              dónde cae al entrar, y el modo negocio se puede activar
+              después desde el perfil sin abrir otra cuenta. */}
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
               ¿Cómo vas a utilizar la aplicación?
@@ -225,7 +227,8 @@ export function Register() {
               })}
             </div>
             <div style={{ fontSize: 11.5, color: C.sub, marginTop: 8, lineHeight: 1.45 }}>
-              Elegí con cuidado: el tipo de cuenta no se puede cambiar después.
+              Podés cambiar de idea: si elegís cliente y más adelante querés publicar
+              tu negocio, lo activás desde tu perfil con esta misma cuenta.
             </div>
           </div>
 

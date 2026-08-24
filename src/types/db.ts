@@ -41,6 +41,11 @@ export interface Profile {
   phone: string | null;
   avatar_url: string | null;
   role: UserRole;
+  /**
+   * Habilita el panel de negocio. Es independiente del rol: una cuenta
+   * `client` con `is_owner` en true puede reservar Y gestionar sus locales.
+   */
+  is_owner: boolean;
   city: string | null;
   created_at: string;
   updated_at: string;

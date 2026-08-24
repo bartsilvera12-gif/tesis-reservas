@@ -71,29 +71,41 @@ export async function construirContexto(jwt: string): Promise<Contexto | null> {
 
   const { data: perfil } = await supabase
     .from('profiles')
-    .select('id, full_name, role, city')
+    .select('id, full_name, role, is_owner, city')
     .eq('id', userData.user.id)
     .maybeSingle();
 
   if (!perfil) return null;
 
   const partes: string[] = [];
-  const hoy = new Date().toISOString().slice(0, 10);
+  // La app es de Paraguay y el servidor puede estar en cualquier lado: con
+  // `toISOString()` a la noche el asistente contestaba con la fecha de manana.
+  const hoy = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Asuncion',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
+  const esDueno = Boolean(perfil.is_owner);
 
   partes.push(
     `Fecha de hoy: ${hoy}`,
-    `Usuario: ${corto(perfil.full_name, 60) || 'sin nombre'} (rol: ${perfil.role})`,
+    `Usuario: ${corto(perfil.full_name, 60) || 'sin nombre'}`,
+    esDueno
+      ? 'Esta cuenta tiene negocio propio Y puede reservar en otros locales.'
+      : 'Esta cuenta es de cliente.',
     perfil.city ? `Ciudad: ${corto(perfil.city, 40)}` : '',
   );
 
-  if (perfil.role === 'owner') {
-    await contextoDueno(supabase, perfil.id, hoy, partes);
-  } else {
-    await contextoCliente(supabase, perfil.id, partes);
-  }
+  // Una misma cuenta puede tener las dos caras, asi que se arman las dos que
+  // correspondan: mirando solo el rol, a un dueno que ademas reserva el
+  // asistente le diria que no tiene ninguna reserva.
+  if (esDueno) await contextoDueno(supabase, perfil.id, hoy, partes);
+  await contextoCliente(supabase, perfil.id, partes);
 
   return {
-    rol: perfil.role,
+    rol: esDueno ? 'owner' : 'client',
     nombre: perfil.full_name || '',
     texto: partes.filter(Boolean).join('\n'),
   };

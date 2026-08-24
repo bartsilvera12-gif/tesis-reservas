@@ -105,7 +105,25 @@ create table if not exists tesisreserva.profiles (
   constraint profiles_role_check check (role in ('client', 'owner', 'admin'))
 );
 
+-- Capacidad de tener negocios, separada del rol.
+--
+-- Antes el rol hacía las dos cosas a la vez: decía qué es la cuenta Y qué
+-- puede hacer, así que un correo servía para vender o para reservar, nunca
+-- para las dos. Como el correo es único en `auth.users`, la única salida era
+-- tener dos cuentas con dos correos distintos.
+--
+-- Ahora TODA cuenta puede reservar, y `is_owner` habilita además el panel de
+-- negocio. `role` se conserva para distinguir a los admin y para saber con
+-- qué intención se registró la persona.
+alter table tesisreserva.profiles
+  add column if not exists is_owner boolean not null default false;
+
+-- Los dueños que ya existían conservan su capacidad.
+update tesisreserva.profiles set is_owner = true
+ where role in ('owner', 'admin') and not is_owner;
+
 create index if not exists idx_profiles_role on tesisreserva.profiles (role);
+create index if not exists idx_profiles_is_owner on tesisreserva.profiles (is_owner) where is_owner;
 
 drop trigger if exists trg_profiles_updated_at on tesisreserva.profiles;
 create trigger trg_profiles_updated_at
@@ -115,6 +133,25 @@ create trigger trg_profiles_updated_at
 -- ---------------------------------------------------------------------------
 -- 2. Helpers de seguridad (SECURITY DEFINER para evitar recursión de RLS)
 -- ---------------------------------------------------------------------------
+
+/**
+ * ¿La cuenta actual puede tener negocios?
+ *
+ * SECURITY DEFINER igual que `current_profile_role()`: leer `profiles` desde
+ * una política de `profiles` provocaría recursión infinita de RLS.
+ */
+create or replace function tesisreserva.is_owner_account()
+returns boolean
+language sql
+stable
+security definer
+set search_path = tesisreserva, public
+as $$
+  select coalesce(
+    (select p.is_owner from tesisreserva.profiles p where p.id = auth.uid()),
+    false
+  );
+$$;
 
 create or replace function tesisreserva.current_profile_role()
 returns text
@@ -594,6 +631,9 @@ create policy profiles_update_own on tesisreserva.profiles
   with check (
     id = auth.uid()
     and role = tesisreserva.current_profile_role()
+    -- `is_owner` tampoco se toca por UPDATE directo: se activa por la RPC
+    -- `become_owner()`, que es el único camino y queda auditable.
+    and is_owner = tesisreserva.is_owner_account()
   );
 
 -- ---- business_categories ---------------------------------------------------
@@ -624,12 +664,12 @@ create policy businesses_read_own on tesisreserva.businesses
   for select to authenticated
   using (owner_id = auth.uid() or tesisreserva.is_admin());
 
--- Solo un `owner` puede crear negocios, y siempre a su nombre.
+-- Solo una cuenta con el modo negocio activado, y siempre a su nombre.
 create policy businesses_insert_own on tesisreserva.businesses
   for insert to authenticated
   with check (
     owner_id = auth.uid()
-    and tesisreserva.current_profile_role() in ('owner', 'admin')
+    and (tesisreserva.is_owner_account() or tesisreserva.is_admin())
   );
 
 create policy businesses_update_own on tesisreserva.businesses
@@ -1040,8 +1080,11 @@ begin
     raise exception 'Necesitás iniciar sesión para reservar.' using errcode = '28000';
   end if;
 
-  if tesisreserva.current_profile_role() = 'owner' then
-    raise exception 'Las cuentas de negocio no pueden crear reservas.' using errcode = '42501';
+  -- Una cuenta con modo negocio SÍ puede reservar en otros locales: es el
+  -- sentido de tener un solo correo para las dos cosas. Lo único sin sentido
+  -- es reservarse una mesa a uno mismo.
+  if tesisreserva.is_business_owner(p_business_id) then
+    raise exception 'No podés reservar en tu propio negocio.' using errcode = '42501';
   end if;
 
   -- 2. negocio
@@ -1301,6 +1344,52 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+--  Activar el modo negocio en la cuenta propia
+-- ---------------------------------------------------------------------------
+
+/**
+ * Habilita el panel de negocio en la cuenta que llama.
+ *
+ * Es el ÚNICO camino para cambiar `is_owner`: la política de `profiles`
+ * bloquea el UPDATE directo. Así queda un solo punto de entrada, explícito y
+ * fácil de auditar.
+ *
+ * Notar lo que NO hace: no toca `role`. Un cliente que activa su negocio
+ * sigue siendo `role = 'client'`, así que nadie se auto-asciende a `admin`
+ * por este camino, que era la garantía original del diseño.
+ *
+ * Tampoco se puede desactivar desde acá. Apagarlo con negocios publicados
+ * los dejaría sin dueño efectivo: quedarían visibles para los clientes pero
+ * sin nadie que pueda contestar sus reservas.
+ */
+create or replace function tesisreserva.become_owner()
+returns tesisreserva.profiles
+language plpgsql
+security definer
+set search_path = tesisreserva, public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_row tesisreserva.profiles%rowtype;
+begin
+  if v_uid is null then
+    raise exception 'Necesitás iniciar sesión.' using errcode = '28000';
+  end if;
+
+  update tesisreserva.profiles
+     set is_owner = true
+   where id = v_uid
+   returning * into v_row;
+
+  if not found then
+    raise exception 'No encontramos tu perfil.' using errcode = 'P0002';
+  end if;
+
+  return v_row;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 --  Respuesta del dueño a una reseña (+ notificación al cliente)
 -- ---------------------------------------------------------------------------
 create or replace function tesisreserva.reply_to_review(
@@ -1505,14 +1594,17 @@ begin
     v_role := 'client';   -- nadie se auto-asigna admin desde el frontend
   end if;
 
-  insert into tesisreserva.profiles (id, full_name, email, phone, city, role)
+  insert into tesisreserva.profiles (id, full_name, email, phone, city, role, is_owner)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'full_name', ''),
     new.email,
     new.raw_user_meta_data ->> 'phone',
     coalesce(nullif(new.raw_user_meta_data ->> 'city', ''), 'Asunción'),
-    v_role
+    v_role,
+    -- Quien se registra como dueño arranca con el modo negocio ya activado.
+    -- Quien se registra como cliente puede activarlo después sin otra cuenta.
+    v_role = 'owner'
   )
   on conflict (id) do nothing;
 
@@ -1549,6 +1641,7 @@ grant usage on schema tesisreserva to anon, authenticated;
 grant execute on function tesisreserva.current_profile_role()          to anon, authenticated;
 grant execute on function tesisreserva.is_admin()                      to anon, authenticated;
 grant execute on function tesisreserva.is_business_owner(uuid)         to anon, authenticated;
+grant execute on function tesisreserva.is_owner_account()              to anon, authenticated;
 
 -- Lectura pública (catálogo del marketplace)
 grant select on tesisreserva.business_categories  to anon, authenticated;
@@ -1583,6 +1676,7 @@ grant execute on function tesisreserva.get_availability(uuid, date, int)        
 grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text)    to authenticated;
 grant execute on function tesisreserva.set_reservation_status(uuid, text, text)                 to authenticated;
 grant execute on function tesisreserva.reply_to_review(uuid, text)                              to authenticated;
+grant execute on function tesisreserva.become_owner()                                          to authenticated;
 grant execute on function tesisreserva.business_stats(uuid)                                     to authenticated;
 grant execute on function tesisreserva.recommended_businesses(int)                              to authenticated;
 
@@ -1709,3 +1803,16 @@ alter view tesisreserva.review_authors set (security_invoker = false);
 -- en `profiles` salteando RLS. Revocamos todo y damos sólo lectura.
 revoke all on tesisreserva.review_authors from anon, authenticated;
 grant select on tesisreserva.review_authors to anon, authenticated;
+
+-- ============================================================================
+--  RECARGA DEL CACHÉ DE POSTGREST
+-- ============================================================================
+
+-- PostgREST guarda en memoria las tablas, columnas, relaciones y funciones que
+-- expone, y NO se entera solo de los cambios de esquema. Sin este aviso, una
+-- función recién creada responde "Could not find the function ... in the schema
+-- cache" aunque exista en la base, y una foreign key nueva rompe los embeds.
+--
+-- Va al final de la migración a propósito: así viaja con el SQL y lo recibe
+-- cualquiera que lo aplique, sin depender de acordarse de hacerlo aparte.
+notify pgrst, 'reload schema';
