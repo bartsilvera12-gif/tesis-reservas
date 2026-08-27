@@ -101,8 +101,6 @@ GoTrue (aparece como `Go-http-client`):
 docker logs mail-templates --tail 20
 ```
 
-## Si hay que rehacerlo desde cero
-
 ## Notas de seguridad
 
 - **El mensaje de error no distingue** entre código equivocado y código
