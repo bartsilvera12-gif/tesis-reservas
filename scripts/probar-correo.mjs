@@ -66,8 +66,12 @@ if (res.ok) {
   El servidor NO pudo procesarlo (HTTP ${res.status}).
   Respuesta: ${cuerpo.slice(0, 300)}
 
-  Un 500 acá casi siempre significa que falta configurar el SMTP.
-  Ver docs/RECUPERAR_CONTRASENA.md
+  Un 500 acá casi siempre es el SMTP. Los registros dicen cuál de los
+  motivos habituales es:
+
+    docker compose logs auth --tail 50
+
+  Ver docs/RECUPERAR_CONTRASENA.md para la tabla de errores.
 `);
   process.exit(1);
 }

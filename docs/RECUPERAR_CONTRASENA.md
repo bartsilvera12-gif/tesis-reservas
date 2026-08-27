@@ -30,43 +30,52 @@ servidor lo rechaza.
 Todo lo anterior ya está implementado en la app. Falta que el Supabase
 autohospedado pueda **enviar correos**, y que la plantilla incluya el código.
 
-### 1. Conectar Resend
+### 1. Conectar el correo (SMTP de Gmail)
 
-Un servidor propio de correo termina en spam: conviene un proveedor. Se eligió
-**Resend** (3.000 correos/mes, 100/día, SMTP incluido en el plan gratuito).
+Los correos salen desde **alanayalawow@gmail.com**, usando el servidor de
+Google. No hace falta verificar ningún dominio ni tocar DNS.
 
-El motivo no es el precio — a esta escala cualquiera sobra — sino que Resend
-exige verificar un dominio propio, y `neura.com.py` ya está en Cloudflare. Un
-correo firmado con SPF y DKIM desde ese dominio llega a la bandeja de entrada;
-uno desde el remitente compartido de un servicio gratuito cae en spam seguido.
-Como varias cuentas del sistema son de Gmail, eso importa.
+> **Por qué Gmail y no un proveedor como Resend:** se eligió que el remitente
+> sea esa casilla concreta. Resend (y cualquier proveedor serio) sólo deja
+> enviar desde un dominio propio verificado, y `gmail.com` es de Google: nadie
+> puede demostrar que es suyo. Para que el remitente sea un Gmail, el único
+> camino es el SMTP del propio Google.
 
-#### a. Verificar el dominio
+#### a. Activar la verificación en dos pasos
 
-En Resend: **Domains → Add Domain** → `neura.com.py`. Da tres o cuatro
-registros DNS para cargar en Cloudflare.
+Google no entrega contraseñas de aplicación sin esto. En la cuenta
+`alanayalawow@gmail.com`:
 
-> **Ojo con Cloudflare:** los registros de verificación tienen que quedar en
-> **DNS only** (nube gris), NO proxeados (nube naranja). Si Resend pide un
-> CNAME para DKIM y queda proxeado, Cloudflare devuelve su propia IP y la
-> verificación nunca pasa.
+**Cuenta de Google → Seguridad → Verificación en 2 pasos** → activarla.
 
-Los TXT (SPF, DMARC) no se proxean nunca, así que esos no dan problema.
+#### b. Generar una contraseña de aplicación
 
-#### b. Configurar GoTrue
+**Cuenta de Google → Seguridad → Contraseñas de aplicaciones**.
+
+Se crea una para "Correo" y Google devuelve **16 caracteres**. Esa es la que
+va en la configuración, NO la contraseña con la que entrás a Gmail.
+
+> Se copia directo al `.env` de la VPS. No hace falta que pase por ningún
+> lado más: es una credencial y cuantas menos manos la toquen, mejor. Si
+> alguna vez se filtra, se revoca desde esa misma pantalla sin cambiar la
+> contraseña de la cuenta.
+
+#### c. Configurar GoTrue
 
 En la VPS de Supabase (`187.77.247.54`), en el `.env` del stack:
 
 ```env
-GOTRUE_SMTP_HOST=smtp.resend.com
+GOTRUE_SMTP_HOST=smtp.gmail.com
 GOTRUE_SMTP_PORT=587
-GOTRUE_SMTP_USER=resend
-GOTRUE_SMTP_PASS=<la API key que genera Resend>
-GOTRUE_SMTP_ADMIN_EMAIL=no-responder@neura.com.py
+GOTRUE_SMTP_USER=alanayalawow@gmail.com
+GOTRUE_SMTP_PASS=<los 16 caracteres, sin espacios>
+GOTRUE_SMTP_ADMIN_EMAIL=alanayalawow@gmail.com
 GOTRUE_SMTP_SENDER_NAME=AJ Spots
 ```
 
-El usuario es literalmente `resend`; la clave es la API key.
+`GOTRUE_SMTP_ADMIN_EMAIL` tiene que ser **la misma dirección** que
+`GOTRUE_SMTP_USER`. Si se pone otra, Gmail reescribe el remitente o rechaza
+el envío directamente: no permite mandar en nombre de una casilla ajena.
 
 Después, reiniciar el servicio de autenticación:
 
@@ -74,8 +83,14 @@ Después, reiniciar el servicio de autenticación:
 docker compose restart auth
 ```
 
-> El remitente (`GOTRUE_SMTP_ADMIN_EMAIL`) tiene que estar en el dominio
-> verificado. Con una casilla de Gmail suelta, Resend rechaza el envío.
+#### Límites que conviene tener presentes
+
+- **~500 correos por día.** Para esta app sobra: son unas pocas
+  recuperaciones de contraseña.
+- **El usuario ve una dirección personal** como remitente, y Gmail suele
+  agregar un "enviado por" cuando detecta correo automatizado.
+- **Si Google bloquea el acceso**, avisa por correo a esa misma casilla. Suele
+  pasar la primera vez que un servidor nuevo se conecta.
 
 ### 2. Poner el código en la plantilla
 
@@ -97,14 +112,27 @@ Lo importante es `{{ .Token }}`, que es el código de 6 dígitos.
 ### 3. Probar que llega
 
 ```bash
-npm run auth:probar-correo -- tucorreo@gmail.com
+npm run auth:probar-correo -- alanayala212.aa@gmail.com
 ```
 
-Si el correo no llega, revisar los registros del contenedor:
+Conviene probar contra una casilla **distinta** de la que envía: si mandás y
+recibís en la misma, Gmail a veces la archiva sola y parece que no llegó.
+
+Si no llega, los registros del contenedor dicen por qué:
 
 ```bash
 docker compose logs auth --tail 50
 ```
+
+#### Qué significa cada error
+
+| En los registros | Qué pasó |
+|---|---|
+| `535 Username and Password not accepted` | La clave no es la de aplicación, o quedó con espacios. Son 16 caracteres seguidos. |
+| `534 Application-specific password required` | Falta activar la verificación en 2 pasos, o se puso la contraseña normal de la cuenta. |
+| `dial tcp ... i/o timeout` | La VPS no llega a `smtp.gmail.com:587`. Muchos proveedores **bloquean el puerto 587 y el 25 de salida** para frenar spam. Probar el puerto `465`; si tampoco, hay que pedirle al proveedor que lo abra. |
+| `553 ... not allowed` | `GOTRUE_SMTP_ADMIN_EMAIL` no coincide con `GOTRUE_SMTP_USER`. |
+| Nada, y el correo tampoco llega | Revisar spam, y el correo de la casilla que envía: Google avisa ahí cuando bloquea un acceso nuevo. |
 
 ## Notas de seguridad
 
