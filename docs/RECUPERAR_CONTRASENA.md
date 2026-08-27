@@ -30,26 +30,43 @@ servidor lo rechaza.
 Todo lo anterior ya está implementado en la app. Falta que el Supabase
 autohospedado pueda **enviar correos**, y que la plantilla incluya el código.
 
-### 1. Conectar un proveedor de correo
+### 1. Conectar Resend
 
-Un servidor propio de correo termina en spam. Conviene un proveedor; con el
-plan gratuito de cualquiera de estos alcanza de sobra para una tesis:
+Un servidor propio de correo termina en spam: conviene un proveedor. Se eligió
+**Resend** (3.000 correos/mes, 100/día, SMTP incluido en el plan gratuito).
 
-| Proveedor | Gratis | Servidor SMTP |
-|---|---|---|
-| Brevo | 300 correos/día | `smtp-relay.brevo.com`, puerto 587 |
-| Resend | 3.000 correos/mes | `smtp.resend.com`, puerto 587 |
+El motivo no es el precio — a esta escala cualquiera sobra — sino que Resend
+exige verificar un dominio propio, y `neura.com.py` ya está en Cloudflare. Un
+correo firmado con SPF y DKIM desde ese dominio llega a la bandeja de entrada;
+uno desde el remitente compartido de un servicio gratuito cae en spam seguido.
+Como varias cuentas del sistema son de Gmail, eso importa.
 
-En la VPS de Supabase (`187.77.247.54`), en el archivo `.env` del stack:
+#### a. Verificar el dominio
+
+En Resend: **Domains → Add Domain** → `neura.com.py`. Da tres o cuatro
+registros DNS para cargar en Cloudflare.
+
+> **Ojo con Cloudflare:** los registros de verificación tienen que quedar en
+> **DNS only** (nube gris), NO proxeados (nube naranja). Si Resend pide un
+> CNAME para DKIM y queda proxeado, Cloudflare devuelve su propia IP y la
+> verificación nunca pasa.
+
+Los TXT (SPF, DMARC) no se proxean nunca, así que esos no dan problema.
+
+#### b. Configurar GoTrue
+
+En la VPS de Supabase (`187.77.247.54`), en el `.env` del stack:
 
 ```env
-GOTRUE_SMTP_HOST=smtp-relay.brevo.com
+GOTRUE_SMTP_HOST=smtp.resend.com
 GOTRUE_SMTP_PORT=587
-GOTRUE_SMTP_USER=<usuario que te da el proveedor>
-GOTRUE_SMTP_PASS=<clave que te da el proveedor>
-GOTRUE_SMTP_ADMIN_EMAIL=no-responder@tudominio.com
+GOTRUE_SMTP_USER=resend
+GOTRUE_SMTP_PASS=<la API key que genera Resend>
+GOTRUE_SMTP_ADMIN_EMAIL=no-responder@neura.com.py
 GOTRUE_SMTP_SENDER_NAME=AJ Spots
 ```
+
+El usuario es literalmente `resend`; la clave es la API key.
 
 Después, reiniciar el servicio de autenticación:
 
@@ -57,8 +74,8 @@ Después, reiniciar el servicio de autenticación:
 docker compose restart auth
 ```
 
-> El remitente tiene que ser un dominio verificado en el proveedor. Si usás
-> una casilla de Gmail sin verificar, los correos se van a rechazar o a spam.
+> El remitente (`GOTRUE_SMTP_ADMIN_EMAIL`) tiene que estar en el dominio
+> verificado. Con una casilla de Gmail suelta, Resend rechaza el envío.
 
 ### 2. Poner el código en la plantilla
 
