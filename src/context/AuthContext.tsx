@@ -37,6 +37,7 @@ interface AuthContextValue {
   signUp: (args: SignUpArgs) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  recoverWithCode: (email: string, code: string, password: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -204,13 +205,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
+  /**
+   * Pide el código de recuperación por correo.
+   *
+   * No se manda `redirectTo` a propósito. Dentro del APK,
+   * `window.location.origin` es `https://localhost` (el servidor interno de
+   * Capacitor), así que el enlace del correo apuntaba a una dirección que en
+   * el teléfono no existe: se abría el navegador en la nada. Con el código de
+   * 6 dígitos la persona nunca sale de la app y no hace falta ningún enlace.
+   */
   const resetPassword = useCallback(async (email: string) => {
     const { error: err } = await supabase.auth.resetPasswordForEmail(
       email.trim().toLowerCase(),
-      { redirectTo: `${window.location.origin}/auth/nueva-clave` },
     );
     if (err) throw new Error(friendlyError(err, 'No pudimos enviar el correo.'));
   }, []);
+
+  /**
+   * Canjea el código por una sesión temporal y deja la contraseña nueva.
+   *
+   * Los dos pasos van juntos a propósito: el código abre una sesión con
+   * permisos plenos sobre la cuenta, así que dejarla abierta esperando otra
+   * pantalla sería una ventana innecesaria. Si el cambio falla, se cierra.
+   */
+  const recoverWithCode = useCallback(
+    async (email: string, code: string, password: string) => {
+      const { error: verifyErr } = await supabase.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token: code.trim(),
+        type: 'recovery',
+      });
+
+      if (verifyErr) {
+        const m = verifyErr.message.toLowerCase();
+        // El servidor contesta lo mismo ("Token has expired or is invalid") sea
+        // que el código esté mal o que haya vencido: no distingue a propósito,
+        // para no confirmarle a nadie que un código existe. El mensaje tiene
+        // que abarcar los dos casos en vez de afirmar uno.
+        if (m.includes('expired') || m.includes('invalid') || m.includes('not found')) {
+          throw new Error('El código no es correcto o ya venció. Revisalo o pedí uno nuevo.');
+        }
+        if (m.includes('rate') || m.includes('too many')) {
+          throw new Error('Probaste demasiadas veces. Esperá unos minutos.');
+        }
+        throw new Error(friendlyError(verifyErr, 'No pudimos validar el código.'));
+      }
+
+      const { error: passErr } = await supabase.auth.updateUser({ password });
+      if (passErr) {
+        await supabase.auth.signOut();
+        throw new Error(friendlyError(passErr, 'No pudimos cambiar la contraseña.'));
+      }
+    },
+    [],
+  );
 
   const updatePassword = useCallback(async (password: string) => {
     const { error: err } = await supabase.auth.updateUser({ password });
@@ -253,13 +301,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       resetPassword,
+      recoverWithCode,
       updatePassword,
       updateProfile,
       refreshProfile,
     }),
     [
       session, profile, loading, error,
-      signIn, signUp, signOut, resetPassword, updatePassword, updateProfile, refreshProfile,
+      signIn, signUp, signOut, resetPassword, recoverWithCode, updatePassword, updateProfile,
+      refreshProfile,
     ],
   );
 

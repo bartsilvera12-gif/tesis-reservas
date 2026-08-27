@@ -18,7 +18,8 @@
     "db:images": "node scripts/seed-images.mjs",
     "db:reviewers": "node scripts/seed-reviewers.mjs",
     "android:icons": "node scripts/gen-icons.mjs",
-    "db:test:owner": "node scripts/test-owner.mjs"
+    "db:test:owner": "node scripts/test-owner.mjs",
+    "auth:probar-correo": "node scripts/probar-correo.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",
