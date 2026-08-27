@@ -32,7 +32,7 @@ autohospedado pueda **enviar correos**, y que la plantilla incluya el código.
 
 ### 1. Conectar el correo (SMTP de Gmail)
 
-Los correos salen desde **alanayalawow@gmail.com**, usando el servidor de
+Los correos salen desde **alanayala212.aa@gmail.com**, usando el servidor de
 Google. No hace falta verificar ningún dominio ni tocar DNS.
 
 > **Por qué Gmail y no un proveedor como Resend:** se eligió que el remitente
@@ -43,10 +43,20 @@ Google. No hace falta verificar ningún dominio ni tocar DNS.
 
 #### a. Activar la verificación en dos pasos
 
-Google no entrega contraseñas de aplicación sin esto. En la cuenta
-`alanayalawow@gmail.com`:
+Google no entrega contraseñas de aplicación sin esto:
+<https://myaccount.google.com/signinoptions/twosv>
 
-**Cuenta de Google → Seguridad → Verificación en 2 pasos** → activarla.
+> **Cuidado con la cuenta.** Si tenés varias sesiones de Google abiertas, las
+> URLs de configuración caen en la **predeterminada**, no en la que creés.
+> El síntoma es "La opción de configuración que buscas no está disponible
+> para tu cuenta", que parece un bloqueo de Google y en realidad es que
+> estás mirando otra cuenta. Verificá el avatar de arriba a la derecha, o
+> forzá cuál con `/u/0/`, `/u/1/`, etc. en la URL.
+
+La opción de contraseñas de aplicación también queda escondida si la 2FA
+está configurada **sólo con una llave de seguridad** física (se arregla
+agregando el teléfono como segundo método) o si la cuenta tiene el
+**Programa de Protección Avanzada**, que las bloquea por diseño.
 
 #### b. Generar una contraseña de aplicación
 
@@ -67,9 +77,9 @@ En la VPS de Supabase (`187.77.247.54`), en el `.env` del stack:
 ```env
 GOTRUE_SMTP_HOST=smtp.gmail.com
 GOTRUE_SMTP_PORT=587
-GOTRUE_SMTP_USER=alanayalawow@gmail.com
+GOTRUE_SMTP_USER=alanayala212.aa@gmail.com
 GOTRUE_SMTP_PASS=<los 16 caracteres, sin espacios>
-GOTRUE_SMTP_ADMIN_EMAIL=alanayalawow@gmail.com
+GOTRUE_SMTP_ADMIN_EMAIL=alanayala212.aa@gmail.com
 GOTRUE_SMTP_SENDER_NAME=AJ Spots
 ```
 
@@ -112,7 +122,7 @@ Lo importante es `{{ .Token }}`, que es el código de 6 dígitos.
 ### 3. Probar que llega
 
 ```bash
-npm run auth:probar-correo -- alanayala212.aa@gmail.com
+npm run auth:probar-correo -- neurautomations@gmail.com
 ```
 
 Conviene probar contra una casilla **distinta** de la que envía: si mandás y
