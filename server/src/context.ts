@@ -67,9 +67,10 @@ type Nombrable = { name?: string } | null;
  * Arma el contexto para el modo en que la persona está parada.
  *
  * `modo` viene de la app: si está en el panel es 'owner', si está navegando
- * como cliente es 'client'. Importa por dos motivos: el asistente responde
- * sobre lo que la persona está haciendo en vez de mezclar, y no se pagan las
- * consultas del panel cuando alguien sólo está buscando dónde comer.
+ * como cliente es 'client'. Es por relevancia, no por velocidad: se midió y
+ * las dos ramas tardan casi lo mismo (~520 ms), porque el costo lo domina el
+ * viaje a Supabase y las consultas del panel ya van en paralelo. Lo que se
+ * gana es que el asistente hable de lo que la persona está haciendo.
  *
  * Es un dato del cliente, así que no decide permisos: las consultas van con SU
  * jwt y RLS decide qué puede ver. Como mucho, pedir 'owner' sin tener negocio
@@ -118,8 +119,7 @@ export async function construirContexto(
 
   // Se arma sólo lo del modo actual. Antes se traían las dos caras siempre, y
   // eso mezclaba las respuestas: a alguien buscando dónde cenar le hablaba de
-  // sus reseñas sin responder. Además, el contexto del panel son varias
-  // consultas que no hacen falta si no está ahí.
+  // sus reseñas sin responder.
   if (esDueno) await contextoDueno(supabase, perfil.id, hoy, partes);
   else await contextoCliente(supabase, perfil.id, partes);
 
