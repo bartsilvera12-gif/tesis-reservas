@@ -169,12 +169,24 @@ export function MyBookings() {
               </div>
 
               <div style={{ fontSize: 13, color: C.sub, marginTop: 5, lineHeight: 1.5 }}>
-                {[
-                  friendlyDate(r.reservation_date),
-                  `${shortTime(r.reservation_time)} h`,
-                  r.party_size ? `${r.party_size} personas` : null,
-                  r.catalog_item?.name,
-                ]
+                {/* Una estadía se cuenta en noches: mostrarle sólo el día de
+                    entrada y una hora haría pensar que es una reserva de un
+                    rato, y no diría cuándo hay que dejar el lugar. */}
+                {(r.check_out_date
+                  ? [
+                      `${friendlyDate(r.reservation_date)} al ${friendlyDate(r.check_out_date)}`,
+                      `${noches(r.reservation_date, r.check_out_date)} noche${
+                        noches(r.reservation_date, r.check_out_date) === 1 ? '' : 's'
+                      }`,
+                      r.party_size ? `${r.party_size} personas` : null,
+                    ]
+                  : [
+                      friendlyDate(r.reservation_date),
+                      `${shortTime(r.reservation_time)} h`,
+                      r.party_size ? `${r.party_size} personas` : null,
+                      r.catalog_item?.name,
+                    ]
+                )
                   .filter(Boolean)
                   .join(' · ')}
               </div>
@@ -257,4 +269,11 @@ export function MyBookings() {
       {confirmNode}
     </div>
   );
+}
+
+/** Noches entre dos fechas ISO. La de salida no se cuenta. */
+function noches(desde: string, hasta: string): number {
+  const a = new Date(`${desde}T00:00:00`);
+  const b = new Date(`${hasta}T00:00:00`);
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86_400_000));
 }

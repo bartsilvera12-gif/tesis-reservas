@@ -41,13 +41,22 @@ export function ReservationConfirmed() {
 
   const r = query.data;
 
-  const detail = [
-    r.business?.name,
-    friendlyDate(r.reservation_date),
-    `${shortTime(r.reservation_time)} h`,
-    r.party_size ? `${r.party_size} personas` : null,
-    r.catalog_item?.name,
-  ]
+  // En una estadía lo que importa son las noches, no la hora de entrada.
+  const detail = (
+    r.check_out_date
+      ? [
+          r.business?.name,
+          `${friendlyDate(r.reservation_date)} al ${friendlyDate(r.check_out_date)}`,
+          r.party_size ? `${r.party_size} personas` : null,
+        ]
+      : [
+          r.business?.name,
+          friendlyDate(r.reservation_date),
+          `${shortTime(r.reservation_time)} h`,
+          r.party_size ? `${r.party_size} personas` : null,
+          r.catalog_item?.name,
+        ]
+  )
     .filter(Boolean)
     .join(' · ');
 

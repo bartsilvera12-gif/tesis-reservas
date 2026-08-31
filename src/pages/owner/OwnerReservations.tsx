@@ -214,7 +214,11 @@ export function OwnerReservations() {
 
               <div style={{ fontSize: 12.5, color: C.sub, marginTop: 4, lineHeight: 1.5 }}>
                 {[
-                  `${shortTime(r.reservation_time)} h`,
+                  // El dueño de un hospedaje necesita ver hasta cuándo se
+                  // queda el huésped, no a qué hora entra.
+                  r.check_out_date
+                    ? `hasta el ${new Date(`${r.check_out_date}T00:00:00`).getDate()}`
+                    : `${shortTime(r.reservation_time)} h`,
                   r.party_size ? `${r.party_size} personas` : null,
                   r.catalog_item?.name,
                   r.reservation_code,

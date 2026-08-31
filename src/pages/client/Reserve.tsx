@@ -57,8 +57,15 @@ export function Reserve() {
   const bizQuery = useAsync(() => fetchBusinessById(id), [id]);
   const business = bizQuery.data;
 
-  const capacityQuery = useAsync(() => fetchCapacity(id), [id]);
-  const catalogQuery = useAsync(() => fetchCatalog(id), [id]);
+  // Cada rubro necesita datos distintos, así que no se piden todos siempre:
+  // un hospedaje saca su capacidad de get_stay_availability (que además dice
+  // cuánto queda libre), y un restaurante no tiene servicios que elegir.
+  const capacityQuery = useAsync(() => fetchCapacity(id), [id], {
+    enabled: business?.reservation_type === 'table',
+  });
+  const catalogQuery = useAsync(() => fetchCatalog(id), [id], {
+    enabled: business?.reservation_type === 'service',
+  });
 
   const tipo = business?.reservation_type ?? 'table';
   const isTableMode = tipo === 'table';

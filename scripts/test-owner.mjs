@@ -685,6 +685,37 @@ try {
        `(${g.rows[0].deposit_amount})`);
   }
 
+  console.log('\n--- 13. El comprobante es privado ---');
+  // Un comprobante muestra numero de cuenta, titular y monto. Solo pueden
+  // verlo quien lo subio y el dueno del local donde reservo.
+  await asAdmin();
+  const ruta = cliente + '/comprobante-privacidad.jpg';
+  await c.query(
+    `insert into storage.objects (bucket_id, name, owner, metadata)
+     values ('tesisreserva-comprobantes', $1, $2, '{}'::jsonb)`, [ruta, cliente]);
+  const conSena = (await c.query(
+    `insert into tesisreserva.reservations
+       (business_id, client_id, reservation_code, reservation_date, reservation_time,
+        party_size, status, deposit_required, deposit_amount, deposit_proof_url)
+     values ($1,$2,tesisreserva.gen_reservation_code(), tesisreserva.hoy()+1,'12:00',
+        2,'pending',true,50000,$3) returning id`, [biz, cliente, ruta])).rows[0].id;
+
+  const loVe = async (uid) => {
+    await asUser(uid);
+    const n = (await c.query(
+      `select count(*)::int n from storage.objects where name = $1`, [ruta])).rows[0].n;
+    return n === 1;
+  };
+
+  ok('lo ve quien lo subio', await loVe(cliente));
+  ok('lo ve el dueno del local', await loVe(duenio));
+  ok('NO lo ve otro dueno', !(await loVe(intruso)));
+  ok('NO lo ve otro cliente', !(await loVe(cliente2)));
+
+  // No hace falta limpiar: Storage prohibe el DELETE directo y toda la
+  // transaccion termina en ROLLBACK igual.
+  await asAdmin();
+
   console.log(`\n==========  ${pass} PASS  /  ${fail} FAIL  ==========`);
   if (fallos.length) {
     console.log('\nFallaron:');

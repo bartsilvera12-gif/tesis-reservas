@@ -557,8 +557,10 @@ function CapacityCard({ toast }: { toast: Toast }) {
 
   if (!active) return null;
 
-  // Barberías y spas usan cupos simultáneos, no mesas.
-  if (active.reservation_type === 'service') {
+  // Lavaderos, peluquerías y spas trabajan con cupos simultáneos. Los
+  // restaurantes con mesas y los hospedajes con alojamientos por capacidad,
+  // que se editan más abajo con la misma tabla.
+  if (active.reservation_type === 'service' || active.reservation_type === 'slot') {
     return (
       <Card>
         <SectionLabel>Turnos simultáneos</SectionLabel>
@@ -672,7 +674,9 @@ function CatalogCard({ toast }: { toast: Toast }) {
 
   if (!active) return null;
 
-  const isService = active.reservation_type === 'service';
+  // 'service' y 'slot' venden servicios; el resto, productos de carta.
+  const isService =
+    active.reservation_type === 'service' || active.reservation_type === 'slot';
   const items = query.data ?? [];
 
   async function add() {

@@ -208,7 +208,9 @@ export function BusinessDetail() {
           }}
         >
           <button onClick={() => setTab('carta')} style={tabStyle(tab === 'carta')}>
-            {business.reservation_type === 'service' ? 'Servicios' : 'Carta'}
+            {business.reservation_type === 'service' || business.reservation_type === 'slot'
+              ? 'Servicios'
+              : 'Carta'}
           </button>
           <button onClick={() => setTab('resenas')} style={tabStyle(tab === 'resenas')}>
             Reseñas
