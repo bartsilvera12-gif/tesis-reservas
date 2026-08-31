@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom';
+import { useRecordatorios } from '@/hooks/useRecordatorios';
 import { AppShell } from './AppShell';
 import { BottomNav, ICONS, type NavItem } from '@/components/BottomNav';
 import { HelpBubble } from '@/components/HelpBubble';
@@ -13,6 +14,9 @@ const ITEMS: NavItem[] = [
 ];
 
 export function OwnerLayout() {
+  // Deja programados los avisos previos a cada reserva.
+  useRecordatorios();
+
   return (
     <AppShell nav={<BottomNav items={ITEMS} />}>
       <Outlet />

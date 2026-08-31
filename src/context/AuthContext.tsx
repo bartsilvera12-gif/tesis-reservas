@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, friendlyError } from '@/lib/supabase';
+import { limpiarRecordatorios } from '@/services/recordatorios';
 import type { Profile, UserRole } from '@/types/db';
 
 /**
@@ -277,6 +278,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     activeUser.current = null;
     setProfile(null);
     guardarPerfil(null);
+    // Los avisos quedan en el sistema operativo, no en la app: sin esto le
+    // seguirían sonando recordatorios de reservas ajenas a quien use el
+    // teléfono después.
+    await limpiarRecordatorios();
     await supabase.auth.signOut();
   }, []);
 

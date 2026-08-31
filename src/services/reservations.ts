@@ -149,3 +149,24 @@ export async function fetchBusinessReservations(
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar las reservas.'));
   return (data ?? []) as ReservationWithRelations[];
 }
+
+/**
+ * Reservas próximas que merecen un recordatorio.
+ *
+ * Una sola consulta sirve para los dos roles: RLS ya devuelve las reservas
+ * propias si sos cliente y las de tus locales si sos dueño. Quien tiene los
+ * dos modos recibe ambas en la misma respuesta, y cada fila se distingue
+ * mirando si `client_id` es uno mismo.
+ */
+export async function fetchUpcomingForReminders(): Promise<ReservationWithRelations[]> {
+  const { data, error } = await supabase
+    .from('reservations')
+    .select(RESERVATION_SELECT)
+    .gte('reservation_date', todayISO())
+    .in('status', ['pending', 'confirmed'])
+    .order('reservation_date')
+    .order('reservation_time');
+
+  if (error) throw new Error(friendlyError(error, 'No pudimos cargar tus reservas.'));
+  return (data ?? []) as ReservationWithRelations[];
+}

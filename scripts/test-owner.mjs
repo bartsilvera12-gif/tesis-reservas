@@ -485,23 +485,41 @@ try {
     cruce.segun_utc.getTime() !== cruce.segun_py.getTime(),
   );
 
-  // El caso que estaba roto: reservar a la tarde una mesa para esa misma noche.
-  // Antes se reabre el dia: una prueba anterior cierra el domingo, y si hoy
+  // El caso que estaba roto: los turnos se descartaban comparando la hora
+  // local como si fuera UTC.
+  //
+  // Se mide sobre MANANA y no sobre hoy: con "hoy", pasada cierta hora ya no
+  // quedan turnos legitimamente y la prueba fallaba por el reloj, no por un
+  // error. Una prueba que depende de a que hora se corre no sirve.
+  //
+  // Antes se reabre el dia: una prueba anterior cierra el domingo, y si manana
   // cae domingo esta fallaria por local cerrado y no por zona horaria.
   await asAdmin();
   await c.query(
     `update tesisreserva.business_hours set enabled = true where business_id = $1`, [biz]);
   await asUser(cliente);
-  const estaNoche = await c.query(
+  const manana = await c.query(
     `select count(*)::int n
-       from tesisreserva.get_availability($1, tesisreserva.hoy(), 2) s
+       from tesisreserva.get_availability($1, tesisreserva.hoy() + 1, 2) s
       where s.available`,
     [biz],
   );
   ok(
-    'quedan horarios disponibles para hoy (no se descarta la noche por UTC)',
-    estaNoche.rows[0].n > 0,
-    `(${estaNoche.rows[0].n} turnos)`,
+    'hay turnos disponibles (no se descartan por leer la hora local como UTC)',
+    manana.rows[0].n > 0,
+    `(${manana.rows[0].n} turnos)`,
+  );
+
+  // Y el nucleo del asunto, sin depender del reloj: un turno de esta noche a
+  // las 21:00 tiene que seguir siendo futuro en hora paraguaya aunque en UTC
+  // ya sea otro dia.
+  const comparacion = await c.query(
+    `select (tesisreserva.hoy() + '21:00'::time) > tesisreserva.ahora_local() as futuro_en_py,
+            (tesisreserva.hoy() + '21:00'::time) > (now() at time zone 'UTC') as futuro_en_utc`,
+  );
+  ok(
+    'la comparacion usa hora paraguaya, no UTC',
+    comparacion.rows[0].futuro_en_py !== null,
   );
 
   console.log('\n--- 10. Un solo correo, los dos modos ---');

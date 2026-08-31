@@ -40,6 +40,24 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      Avisos previos a la reserva. Desde Android 13 el permiso se pide en
+      tiempo de ejecución; la app funciona igual si se lo niegan, sólo que
+      sin recordatorios.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Un recordatorio a "30 minutos antes" tiene que sonar a esa hora, no
+      cuando el sistema tenga ganas. Sin esto Android los agrupa para ahorrar
+      batería y pueden llegar tarde.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- Para reprogramarlos cuando el teléfono se reinicia. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
       Ubicación: sólo para mostrar distancias y centrar el mapa.
       La app funciona igual si el usuario no la concede.
     -->

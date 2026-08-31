@@ -19,7 +19,8 @@
     "db:reviewers": "node scripts/seed-reviewers.mjs",
     "android:icons": "node scripts/gen-icons.mjs",
     "db:test:owner": "node scripts/test-owner.mjs",
-    "auth:probar-correo": "node scripts/probar-correo.mjs"
+    "auth:probar-correo": "node scripts/probar-correo.mjs",
+    "test:recordatorios": "node scripts/test-recordatorios.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",
@@ -27,6 +28,7 @@
     "@capacitor/core": "^7.0.1",
     "@capacitor/geolocation": "^7.0.0",
     "@capacitor/keyboard": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.7",
     "@capacitor/status-bar": "^7.0.0",
     "@supabase/supabase-js": "^2.48.1",
     "leaflet": "^1.9.4",
@@ -43,8 +45,8 @@
     "dotenv": "^16.4.7",
     "pg": "^8.13.1",
     "shadcn": "^4.18.0",
+    "sharp": "^0.33.5",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
-    "sharp": "^0.33.5"
+    "vite": "^5.4.11"
   }
 }
