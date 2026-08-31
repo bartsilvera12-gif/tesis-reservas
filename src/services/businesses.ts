@@ -8,6 +8,7 @@ import type {
   BusinessWithMeta,
   CatalogCategory,
   CatalogItem,
+  Promotion,
 } from '@/types/db';
 
 /** Columnas que la app necesita de un negocio + su categoría y sus reseñas. */
@@ -110,6 +111,74 @@ export async function fetchBusinesses({
   });
 
   return list;
+}
+
+/**
+ * Todo lo de un negocio en UN viaje.
+ *
+ * La pantalla de reserva y la de detalle necesitan negocio, categoría,
+ * capacidad, carta, horarios y promociones. Pedirlos por separado eran cinco
+ * viajes a un servidor que está a ~100 ms; peor todavía si alguno depende del
+ * anterior, porque entonces se encadenan. PostgREST los trae embebidos de una.
+ */
+export interface BusinessFull {
+  business: BusinessWithMeta;
+  capacity: BusinessCapacity[];
+  catalog: CatalogItem[];
+  hours: BusinessHour[];
+  promotions: Promotion[];
+}
+
+const FULL_SELECT = `
+  *,
+  category:business_categories ( id, name, slug, icon, sort_order, active, created_at ),
+  reviews ( rating ),
+  capacity:business_capacity ( * ),
+  catalog:catalog_items ( *, category:catalog_categories ( name ) ),
+  hours:business_hours ( *, slots:business_hour_slots ( * ) ),
+  promotions ( * )
+`;
+
+export async function fetchBusinessFull(
+  id: string,
+  coords: Coords | null = null,
+): Promise<BusinessFull | null> {
+  const { data, error } = await supabase
+    .from('businesses')
+    .select(FULL_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw new Error(friendlyError(error, 'No pudimos cargar el negocio.'));
+  if (!data) return null;
+
+  const row = data as RawBusiness & {
+    capacity?: BusinessCapacity[] | null;
+    catalog?: CatalogItem[] | null;
+    hours?: BusinessHour[] | null;
+    promotions?: Promotion[] | null;
+  };
+
+  const ahora = Date.now();
+
+  return {
+    business: decorate(row, coords),
+    capacity: (row.capacity ?? [])
+      .filter((c) => c.active)
+      .sort((a, b) => a.party_size - b.party_size),
+    catalog: (row.catalog ?? [])
+      .filter((i) => i.active)
+      .sort((a, b) => a.sort_order - b.sort_order),
+    hours: (row.hours ?? []).sort((a, b) => a.day_of_week - b.day_of_week),
+    // El filtro de vigencia se hace acá y no en el embed: PostgREST no deja
+    // condicionar una tabla embebida por fecha sin complicar la consulta.
+    promotions: (row.promotions ?? []).filter(
+      (p) =>
+        p.active &&
+        new Date(p.starts_at).getTime() <= ahora &&
+        (p.unlimited || !p.ends_at || new Date(p.ends_at).getTime() > ahora),
+    ),
+  };
 }
 
 export async function fetchBusinessById(

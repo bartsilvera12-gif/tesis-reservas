@@ -88,12 +88,14 @@ export function MapView({
     );
 
     for (const b of located) {
+      // El pin es el area tocable: con la pastilla mas chica quedaba en 32px
+      // y apuntar en un mapa ya es dificil de por si.
       const icon = L.divIcon({
         className: '',
         iconSize: undefined,
         html:
           '<div style="transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;cursor:pointer">' +
-          `<div style="background:${C.terracotta};color:#fff;font:700 11px Figtree,system-ui,sans-serif;border-radius:999px;padding:4px 10px;white-space:nowrap;box-shadow:0 4px 10px rgba(169,103,76,.45)">${escapeHtml(
+          `<div style="background:${C.terracotta};color:#fff;font:700 12px Figtree,system-ui,sans-serif;border-radius:999px;padding:9px 12px;white-space:nowrap;box-shadow:0 4px 10px rgba(169,103,76,.45)">${escapeHtml(
             b.name,
           )}</div>` +
           `<div style="width:9px;height:9px;background:${C.terracottaDark};border:2px solid #fff;border-radius:50%;margin-top:2px;box-shadow:0 2px 5px rgba(0,0,0,.3)"></div>` +

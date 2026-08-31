@@ -1,37 +1,32 @@
 import { supabase, friendlyError } from '@/lib/supabase';
 import type { Review, ReviewWithClient } from '@/types/db';
 
-const REVIEW_SELECT = `
-  *,
-  business:businesses ( id, name )
-`;
-
 /**
  * Los nombres de los autores NO salen de `profiles`: esa tabla sólo deja leer
  * el perfil propio, así que un cliente mirando las reseñas de otro recibiría
- * null. Se leen de la vista `review_authors`, que publica únicamente nombre y
+ * null. Salen de la vista `review_authors`, que publica únicamente nombre y
  * avatar de quienes tienen una reseña visible.
+ *
+ * Va embebida y no en una segunda consulta: antes eran dos viajes en fila
+ * (traer reseñas, y recién ahí buscar los autores por id), y la pantalla
+ * mostraba "Cliente" hasta que volvía el segundo.
  */
-async function attachAuthors(reviews: ReviewWithClient[]): Promise<ReviewWithClient[]> {
-  const ids = [...new Set(reviews.map((r) => r.client_id))];
-  if (!ids.length) return reviews;
+const REVIEW_SELECT = `
+  *,
+  business:businesses ( id, name ),
+  author:review_authors ( id, full_name, avatar_url )
+`;
 
-  const { data, error } = await supabase
-    .from('review_authors')
-    .select('id, full_name, avatar_url')
-    .in('id', ids);
+type ConAutor = ReviewWithClient & {
+  author?: { id: string; full_name: string; avatar_url: string | null } | null;
+};
 
-  // Si falla, mostramos las reseñas igual: perder el nombre es preferible a
-  // dejar la pantalla vacía.
-  if (error) return reviews;
-
-  const byId = new Map(
-    ((data ?? []) as { id: string; full_name: string; avatar_url: string | null }[]).map(
-      (a) => [a.id, a],
-    ),
-  );
-
-  return reviews.map((r) => ({ ...r, client: byId.get(r.client_id) ?? r.client }));
+/** Mueve el autor embebido a `client`, que es lo que usan las pantallas. */
+function conAutor(filas: ConAutor[]): ReviewWithClient[] {
+  return filas.map(({ author, ...r }) => ({
+    ...r,
+    client: author ?? r.client,
+  })) as ReviewWithClient[];
 }
 
 export async function fetchBusinessReviews(
@@ -45,7 +40,7 @@ export async function fetchBusinessReviews(
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar las reseñas.'));
-  return attachAuthors((data ?? []) as ReviewWithClient[]);
+  return conAutor((data ?? []) as ConAutor[]);
 }
 
 export async function fetchMyReviews(clientId: string): Promise<ReviewWithClient[]> {
@@ -56,7 +51,7 @@ export async function fetchMyReviews(clientId: string): Promise<ReviewWithClient
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar tus reseñas.'));
-  return attachAuthors((data ?? []) as ReviewWithClient[]);
+  return conAutor((data ?? []) as ConAutor[]);
 }
 
 export async function createReview(payload: {

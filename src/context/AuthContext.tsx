@@ -54,7 +54,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /** Evita condiciones de carrera entre respuestas de fetch desordenadas. */
   const activeUser = useRef<string | null>(null);
 
-  const loadProfile = useCallback(async (userId: string, email?: string | null) => {
+  /**
+   * Petición del profile que está en vuelo.
+   *
+   * Al arrancar, `getSession()` y el evento `INITIAL_SESSION` de
+   * `onAuthStateChange` piden los dos el mismo profile, y el orden entre ellos
+   * no está garantizado. Guardar la promesa deduplica sin depender de quién
+   * llegue primero: la segunda llamada se cuelga de la que ya salió, en vez de
+   * abrir otra petición al arranque, que es justo el momento más sensible.
+   */
+  const perfilEnVuelo = useRef<{ id: string; promesa: Promise<void> } | null>(null);
+
+  /**
+   * Copia del profile en el dispositivo.
+   *
+   * Al abrir la app había que esperar el viaje del profile ANTES de que los
+   * guards dejaran renderizar, y recién ahí la pantalla pedía sus datos: dos
+   * viajes en fila cada vez. Con la copia local se pinta al instante y el
+   * profile fresco se pide igual, en paralelo, corrigiendo lo que haga falta.
+   *
+   * Es sólo para pintar rápido: NO es una fuente de verdad. Los permisos los
+   * decide la base con RLS, así que una copia vieja no habilita nada.
+   */
+  const CLAVE_PERFIL = 'tesisreserva.perfil';
+
+  const leerPerfilGuardado = (userId: string): Profile | null => {
+    try {
+      const crudo = localStorage.getItem(CLAVE_PERFIL);
+      if (!crudo) return null;
+      const guardado = JSON.parse(crudo) as Profile;
+      return guardado?.id === userId ? guardado : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const guardarPerfil = (p: Profile | null) => {
+    try {
+      if (p) localStorage.setItem(CLAVE_PERFIL, JSON.stringify(p));
+      else localStorage.removeItem(CLAVE_PERFIL);
+    } catch {
+      // Si el almacenamiento está lleno o bloqueado, se sigue sin caché.
+    }
+  };
+
+  const loadProfile = useCallback((userId: string, email?: string | null): Promise<void> => {
+    const enVuelo = perfilEnVuelo.current;
+    if (enVuelo && enVuelo.id === userId) return enVuelo.promesa;
+
+    const promesa = cargarPerfil(userId, email).finally(() => {
+      if (perfilEnVuelo.current?.promesa === promesa) perfilEnVuelo.current = null;
+    });
+    perfilEnVuelo.current = { id: userId, promesa };
+    return promesa;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cargarPerfil = useCallback(async (userId: string, email?: string | null) => {
     activeUser.current = userId;
 
     const { data, error: err } = await supabase
@@ -74,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data) {
       setError(null);
       setProfile(data as Profile);
+      guardarPerfil(data as Profile);
       return;
     }
 
@@ -113,18 +170,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setError(null);
     setProfile(created as Profile);
+    guardarPerfil(created as Profile);
   }, []);
 
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(async ({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       setSession(data.session);
-      if (data.session?.user) {
-        await loadProfile(data.session.user.id, data.session.user.email);
+
+      const user = data.session?.user;
+      if (!user) {
+        setLoading(false);
+        return;
       }
-      if (mounted) setLoading(false);
+
+      // Con la copia local se deja de esperar: la pantalla se pinta y pide sus
+      // datos mientras el profile fresco viene en paralelo.
+      const guardado = leerPerfilGuardado(user.id);
+      if (guardado) {
+        setProfile(guardado);
+        activeUser.current = user.id;
+        setLoading(false);
+      }
+
+      void loadProfile(user.id, user.email).finally(() => {
+        if (mounted) setLoading(false);
+      });
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
@@ -134,6 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!next?.user) {
         activeUser.current = null;
         setProfile(null);
+        guardarPerfil(null);
         setError(null);
         return;
       }
@@ -202,6 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     activeUser.current = null;
     setProfile(null);
+    guardarPerfil(null);
     await supabase.auth.signOut();
   }, []);
 

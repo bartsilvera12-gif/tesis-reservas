@@ -591,6 +591,7 @@ export function StateView({
             background: C.surface,
             borderRadius: 12,
             padding: '11px 20px',
+            minHeight: 44,
             fontSize: 13.5,
             fontWeight: 700,
             color: C.terracottaDark,

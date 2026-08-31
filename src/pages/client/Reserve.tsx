@@ -1,11 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAsync } from '@/hooks/useAsync';
-import {
-  fetchBusinessById,
-  fetchCapacity,
-  fetchCatalog,
-} from '@/services/businesses';
+import { fetchBusinessFull } from '@/services/businesses';
 import {
   createReservation,
   fetchAvailability,
@@ -54,18 +50,11 @@ export function Reserve() {
 
   const { profile } = useAuth();
 
-  const bizQuery = useAsync(() => fetchBusinessById(id), [id]);
-  const business = bizQuery.data;
-
-  // Cada rubro necesita datos distintos, así que no se piden todos siempre:
-  // un hospedaje saca su capacidad de get_stay_availability (que además dice
-  // cuánto queda libre), y un restaurante no tiene servicios que elegir.
-  const capacityQuery = useAsync(() => fetchCapacity(id), [id], {
-    enabled: business?.reservation_type === 'table',
-  });
-  const catalogQuery = useAsync(() => fetchCatalog(id), [id], {
-    enabled: business?.reservation_type === 'service',
-  });
+  // Un solo viaje trae negocio, capacidad y carta. Pedirlos por separado
+  // encadenaba: la capacidad no se podía pedir hasta saber el rubro, o sea
+  // hasta que volviera el negocio.
+  const bizQuery = useAsync(() => fetchBusinessFull(id), [id]);
+  const business = bizQuery.data?.business ?? null;
 
   const tipo = business?.reservation_type ?? 'table';
   const isTableMode = tipo === 'table';
@@ -75,13 +64,13 @@ export function Reserve() {
 
   /** Sólo los tamaños de mesa que el negocio realmente tiene configurados. */
   const partyOptions = useMemo(
-    () => (capacityQuery.data ?? []).filter((c) => c.active && c.quantity > 0),
-    [capacityQuery.data],
+    () => (bizQuery.data?.capacity ?? []).filter((c) => c.quantity > 0),
+    [bizQuery.data],
   );
 
   const services = useMemo(
-    () => (catalogQuery.data ?? []).filter((i) => i.item_type === 'service'),
-    [catalogQuery.data],
+    () => (bizQuery.data?.catalog ?? []).filter((i) => i.item_type === 'service'),
+    [bizQuery.data],
   );
 
   /**
@@ -384,7 +373,7 @@ export function Reserve() {
             <div style={{ fontSize: 13.5, fontWeight: 800, margin: '18px 0 8px' }}>
               ¿Cuántas personas?
             </div>
-            {capacityQuery.loading && !capacityQuery.data ? (
+            {bizQuery.loading && !bizQuery.data ? (
               <Loading label="" />
             ) : partyOptions.length === 0 ? (
               <div

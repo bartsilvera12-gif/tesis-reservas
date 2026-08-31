@@ -356,9 +356,10 @@ function PromoBanner({
               key={p.id}
               aria-label={`Promoción ${i + 1}`}
               onClick={() => irA(i)}
-              // El punto se ve chico pero el área tocable es de 44px.
+              // El punto se ve chico pero el área tocable es más grande: a 24px
+              // de ancho el dedo cae seguido entre dos puntos.
               style={{
-                width: 24,
+                width: 36,
                 height: 44,
                 display: 'flex',
                 alignItems: 'center',

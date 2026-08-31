@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAsync } from '@/hooks/useAsync';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { fetchBusinesses, fetchCategories } from '@/services/businesses';
 import { BusinessRow } from '@/components/BusinessCard';
-import { MapView } from '@/components/MapView';
 import { Chip, Loading, StateView } from '@/components/ui';
 import { C } from '@/lib/theme';
+
+/**
+ * El mapa se carga aparte, sólo cuando se va a ver.
+ *
+ * Leaflet pesa como un tercio del paquete y no lo necesita casi nadie: en el
+ * teléfono, ese peso es tiempo de arranque en TODAS las pantallas, aunque
+ * nunca se abra el mapa.
+ */
+const MapView = lazy(() =>
+  import('@/components/MapView').then((m) => ({ default: m.MapView })),
+);
 
 export function Explore() {
   const navigate = useNavigate();
@@ -38,7 +48,8 @@ export function Explore() {
     flex: 1,
     textAlign: 'center' as const,
     borderRadius: 10,
-    minHeight: 42,
+    // 44px es el minimo tactil recomendado; con 42 el dedo falla mas.
+    minHeight: 44,
     padding: '0 8px',
     fontSize: 13,
     fontWeight: 700,
@@ -125,11 +136,13 @@ export function Explore() {
 
       {mapMode && (
         <div style={{ margin: '14px 20px 0' }}>
-          <MapView
-            businesses={businesses}
-            center={coords}
-            onSelect={(id) => navigate(`/app/negocio/${id}`)}
-          />
+          <Suspense fallback={<Loading label="Abriendo el mapa…" />}>
+            <MapView
+              businesses={businesses}
+              center={coords}
+              onSelect={(id) => navigate(`/app/negocio/${id}`)}
+            />
+          </Suspense>
         </div>
       )}
 

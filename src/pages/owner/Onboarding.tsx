@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
@@ -11,13 +11,23 @@ import {
   updateBusiness,
 } from '@/services/businesses';
 import { uploadBusinessImage } from '@/services/storage';
-import { MapView } from '@/components/MapView';
 import { Button, Field, Loading, Spinner } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
 import { dayShort, slugify } from '@/lib/format';
 import { rubroDe, tamanosIniciales } from '@/lib/rubros';
 import { ErrorImagen, LADO_LOGO, LADO_PORTADA, prepararImagen } from '@/lib/image';
 import type { BusinessWithMeta, ReservationType } from '@/types/db';
+
+/**
+ * El mapa se carga aparte, sólo cuando se va a ver.
+ *
+ * Leaflet pesa como un tercio del paquete y no lo necesita casi nadie: en el
+ * teléfono, ese peso es tiempo de arranque en TODAS las pantallas, aunque
+ * nunca se abra el mapa.
+ */
+const MapView = lazy(() =>
+  import('@/components/MapView').then((m) => ({ default: m.MapView })),
+);
 
 /**
  * Posición inicial del pin en el selector de ubicación (centro de Asunción).
@@ -663,14 +673,16 @@ function LocationPicker({
 
   return (
     <>
-      <MapView
-        businesses={pseudo}
-        center={null}
-        onSelect={() => {}}
-        onMapClick={onChange}
-        height={200}
-        hint="Tocá el mapa para mover el pin"
-      />
+      <Suspense fallback={<Loading label="Abriendo el mapa…" />}>
+        <MapView
+          businesses={pseudo}
+          center={null}
+          onSelect={() => {}}
+          onMapClick={onChange}
+          height={200}
+          hint="Tocá el mapa para mover el pin"
+        />
+      </Suspense>
       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
         <div style={{ flex: 1 }}>
           <Field

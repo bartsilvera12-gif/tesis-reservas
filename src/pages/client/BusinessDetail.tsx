@@ -2,13 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAsync } from '@/hooks/useAsync';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import {
-  fetchBusinessById,
-  fetchBusinessHours,
-  fetchCatalog,
-} from '@/services/businesses';
+import { fetchBusinessFull } from '@/services/businesses';
 import { fetchBusinessReviews } from '@/services/reviews';
-import { fetchBusinessPromotions } from '@/services/promotions';
 import { BusinessLogo, coverStyle } from '@/components/BusinessCard';
 import { Button, Loading, StateView, Stars } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
@@ -31,16 +26,15 @@ export function BusinessDetail() {
   const { coords } = useGeolocation();
   const [tab, setTab] = useState<Tab>('carta');
 
-  const bizQuery = useAsync(() => fetchBusinessById(id, coords), [id, coords?.lat]);
-  const catalogQuery = useAsync(() => fetchCatalog(id), [id]);
+  // Negocio, carta, horarios y promos vienen en un solo viaje. Las reseñas
+  // van aparte porque salen de una vista distinta, y arrancan en paralelo.
+  const bizQuery = useAsync(() => fetchBusinessFull(id, coords), [id, coords?.lat]);
   const reviewsQuery = useAsync(() => fetchBusinessReviews(id), [id]);
-  const hoursQuery = useAsync(() => fetchBusinessHours(id), [id]);
-  const promoQuery = useAsync(() => fetchBusinessPromotions(id, true), [id]);
 
-  const business = bizQuery.data;
-  const catalog = useMemo(() => catalogQuery.data ?? [], [catalogQuery.data]);
+  const business = bizQuery.data?.business ?? null;
+  const catalog = useMemo(() => bizQuery.data?.catalog ?? [], [bizQuery.data]);
   const reviews = useMemo(() => reviewsQuery.data ?? [], [reviewsQuery.data]);
-  const promo = (promoQuery.data ?? [])[0] ?? null;
+  const promo = (bizQuery.data?.promotions ?? [])[0] ?? null;
 
   if (bizQuery.loading && !business) return <Loading label="Cargando negocio…" />;
 
@@ -221,7 +215,7 @@ export function BusinessDetail() {
         </div>
 
         {tab === 'carta' && (
-          <CatalogTab items={catalog} loading={catalogQuery.loading} />
+          <CatalogTab items={catalog} loading={bizQuery.loading} />
         )}
 
         {tab === 'resenas' && (
@@ -343,8 +337,8 @@ export function BusinessDetail() {
 
         {tab === 'info' && (
           <InfoTab
-            hours={hoursQuery.data ?? []}
-            loading={hoursQuery.loading}
+            hours={bizQuery.data?.hours ?? []}
+            loading={bizQuery.loading}
             address={[business.address, business.neighborhood, business.city]
               .filter(Boolean)
               .join(', ')}
