@@ -87,6 +87,9 @@ export function HelpBubble() {
     try {
       await preguntarAlAsistente(
         hilo,
+        // El mismo `rol` que decide los atajos decide de qué te habla: en el
+        // panel responde como asesor del negocio, en la app como cliente.
+        rol,
         (fragmento) => {
           setMensajes((prev) => {
             const copia = [...prev];

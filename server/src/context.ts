@@ -63,7 +63,22 @@ const estadoSena = (e: unknown): string =>
 
 type Nombrable = { name?: string } | null;
 
-export async function construirContexto(jwt: string): Promise<Contexto | null> {
+/**
+ * Arma el contexto para el modo en que la persona está parada.
+ *
+ * `modo` viene de la app: si está en el panel es 'owner', si está navegando
+ * como cliente es 'client'. Importa por dos motivos: el asistente responde
+ * sobre lo que la persona está haciendo en vez de mezclar, y no se pagan las
+ * consultas del panel cuando alguien sólo está buscando dónde comer.
+ *
+ * Es un dato del cliente, así que no decide permisos: las consultas van con SU
+ * jwt y RLS decide qué puede ver. Como mucho, pedir 'owner' sin tener negocio
+ * devuelve una lista vacía.
+ */
+export async function construirContexto(
+  jwt: string,
+  modo: 'client' | 'owner' = 'client',
+): Promise<Contexto | null> {
   const supabase = clienteConJwt(jwt);
 
   const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
@@ -87,22 +102,26 @@ export async function construirContexto(jwt: string): Promise<Contexto | null> {
     day: '2-digit',
   }).format(new Date());
 
-  const esDueno = Boolean(perfil.is_owner);
+  // El modo pedido sólo vale si la cuenta realmente tiene negocio.
+  const esDueno = Boolean(perfil.is_owner) && modo === 'owner';
 
   partes.push(
     `Fecha de hoy: ${hoy}`,
     `Usuario: ${corto(perfil.full_name, 60) || 'sin nombre'}`,
     esDueno
-      ? 'Esta cuenta tiene negocio propio Y puede reservar en otros locales.'
-      : 'Esta cuenta es de cliente.',
+      ? 'Está en el PANEL DE SU NEGOCIO, gestionando su local.'
+      : perfil.is_owner
+        ? 'Está usando la app COMO CLIENTE (tiene un negocio, pero ahora no está en el panel).'
+        : 'Es un cliente de la app.',
     perfil.city ? `Ciudad: ${corto(perfil.city, 40)}` : '',
   );
 
-  // Una misma cuenta puede tener las dos caras, asi que se arman las dos que
-  // correspondan: mirando solo el rol, a un dueno que ademas reserva el
-  // asistente le diria que no tiene ninguna reserva.
+  // Se arma sólo lo del modo actual. Antes se traían las dos caras siempre, y
+  // eso mezclaba las respuestas: a alguien buscando dónde cenar le hablaba de
+  // sus reseñas sin responder. Además, el contexto del panel son varias
+  // consultas que no hacen falta si no está ahí.
   if (esDueno) await contextoDueno(supabase, perfil.id, hoy, partes);
-  await contextoCliente(supabase, perfil.id, partes);
+  else await contextoCliente(supabase, perfil.id, partes);
 
   return {
     rol: esDueno ? 'owner' : 'client',

@@ -24,6 +24,8 @@ export interface MensajeChat {
  */
 export async function preguntarAlAsistente(
   mensajes: MensajeChat[],
+  /** Desde dónde pregunta: el panel del negocio o la app como cliente. */
+  modo: 'client' | 'owner',
   onFragmento: (texto: string) => void,
   signal?: AbortSignal,
   /** Se llama cuando el servidor ya leyó los datos y está esperando a Claude. */
@@ -43,7 +45,7 @@ export async function preguntarAlAsistente(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages: mensajes }),
+    body: JSON.stringify({ messages: mensajes, modo }),
     signal,
   });
 

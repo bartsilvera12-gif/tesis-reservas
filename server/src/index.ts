@@ -138,8 +138,14 @@ app.post('/chat', async (req, res) => {
     return;
   }
 
+  // Desde dónde está preguntando: el panel del negocio o la app como cliente.
+  // Se valida acá y no se confía en cualquier string que llegue.
+  const modo: 'client' | 'owner' = req.body?.modo === 'owner' ? 'owner' : 'client';
+
   const t0 = Date.now();
-  const claveCache = jwt.slice(-32);
+  // El modo forma parte de la clave: sin eso, alguien que cambia del panel a la
+  // app de cliente seguiría recibiendo el contexto anterior durante un minuto.
+  const claveCache = `${jwt.slice(-32)}|${modo}`;
   const enCache = cacheContexto.get(claveCache);
   const reusado = Boolean(enCache && Date.now() - enCache.en < CACHE_MS);
 
@@ -148,7 +154,7 @@ app.post('/chat', async (req, res) => {
     if (reusado) {
       contexto = enCache!.ctx;
     } else {
-      contexto = await construirContexto(jwt);
+      contexto = await construirContexto(jwt, modo);
       cacheContexto.set(claveCache, { en: Date.now(), ctx: contexto });
     }
   } catch (err) {
