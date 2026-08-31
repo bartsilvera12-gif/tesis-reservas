@@ -4,6 +4,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { useToast } from '@/hooks/useToast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { fetchBusinessReservations, setReservationStatus } from '@/services/reservations';
+import { signedProofUrl } from '@/services/storage';
 import { Chip, Loading, PageTitle, StateView, StatusChip } from '@/components/ui';
 import { C } from '@/lib/theme';
 import { dayShort, money, shortTime, toISODate } from '@/lib/format';
@@ -59,6 +60,17 @@ export function OwnerReservations() {
   const { active } = useOwnerBusiness();
   const toast = useToast();
   const { confirm, node: confirmNode } = useConfirm();
+
+  // Comprobante que se está mirando. Se guarda la URL firmada, no la ruta.
+  const [comprobante, setComprobante] = useState<string | null>(null);
+
+  async function verComprobante(ruta: string) {
+    try {
+      setComprobante(await signedProofUrl(ruta));
+    } catch (err) {
+      toast.fail(err instanceof Error ? err.message : 'No pudimos abrir el comprobante.');
+    }
+  }
 
   const days = useMemo(() => rangoDeDias(), []);
   const hoy = useMemo(() => toISODate(new Date()), []);
@@ -228,8 +240,52 @@ export function OwnerReservations() {
               )}
 
               {r.deposit_required && (
-                <div style={{ fontSize: 11.5, color: C.warn, fontWeight: 600, marginTop: 6 }}>
-                  Seña {money(r.deposit_amount)} · {r.deposit_status === 'paid' ? 'pagada' : 'pendiente'}
+                <div
+                  style={{
+                    marginTop: 8,
+                    background: C.warnBg,
+                    border: `1px solid ${C.warnLine}`,
+                    borderRadius: 10,
+                    padding: '9px 11px',
+                  }}
+                >
+                  <div style={{ fontSize: 11.5, color: C.warn, fontWeight: 700 }}>
+                    Seña {money(r.deposit_amount)} ·{' '}
+                    {r.deposit_status === 'paid' ? 'confirmada' : 'a verificar'}
+                  </div>
+
+                  {/* El comprobante es lo que el dueño necesita mirar antes de
+                      aceptar. La URL se firma al momento porque el archivo vive
+                      en un bucket privado. */}
+                  {r.deposit_proof_url ? (
+                    <button
+                      onClick={() => void verComprobante(r.deposit_proof_url!)}
+                      style={{
+                        marginTop: 6,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 7,
+                        color: C.terracottaDark,
+                        fontSize: 12.5,
+                        fontWeight: 800,
+                        background: 'none',
+                        padding: '9px 0',
+                        minHeight: 40,
+                      }}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M12 4.5C6.5 4.5 2.4 7.6 1 12c1.4 4.4 5.5 7.5 11 7.5S21.6 16.4 23 12c-1.4-4.4-5.5-7.5-11-7.5zm0 12c-3.8 0-7-2.4-8.3-4.5C5 9.4 8.2 7 12 7s7 2.4 8.3 4.5C19 13.6 15.8 16.5 12 16.5zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"
+                          fill={C.terracottaDark}
+                        />
+                      </svg>
+                      Ver el comprobante
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: C.danger, marginTop: 4 }}>
+                      Sin comprobante cargado.
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -331,6 +387,53 @@ export function OwnerReservations() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {comprobante && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setComprobante(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1100,
+            background: 'rgba(45,34,26,.82)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            gap: 14,
+          }}
+        >
+          <img
+            src={comprobante}
+            alt="Comprobante de la seña"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '78dvh',
+              objectFit: 'contain',
+              borderRadius: 12,
+              background: '#fff',
+            }}
+          />
+          <button
+            onClick={() => setComprobante(null)}
+            style={{
+              minHeight: 46,
+              padding: '0 26px',
+              borderRadius: 14,
+              background: C.surface,
+              color: C.ink,
+              fontSize: 14.5,
+              fontWeight: 800,
+            }}
+          >
+            Cerrar
+          </button>
         </div>
       )}
 

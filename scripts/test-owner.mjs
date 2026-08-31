@@ -564,6 +564,127 @@ try {
     [cliente],
   );
 
+  console.log('\n--- 11. Rubros: cada uno reserva a su manera ---');
+  await asAdmin();
+  const cats = {};
+  for (const [slug, nombre] of [['lavaderos','Lavaderos'],['spa-de-unas','Spa de unas'],['hospedajes','Hospedajes']]) {
+    cats[slug] = (await c.query(
+      `insert into tesisreserva.business_categories (name, slug) values ($1,$2)
+       on conflict (slug) do update set name=excluded.name returning id`, [nombre, slug])).rows[0].id;
+  }
+
+  const mkRubro = async (tipo, slug, nombre) => {
+    await asUser(duenio);
+    const b = (await c.query(
+      `insert into tesisreserva.businesses (owner_id, category_id, name, slug, city,
+         reservation_type, default_slot_duration_minutes, slot_step_minutes, active,
+         max_concurrent_reservations, latitude, longitude)
+       values ($1,$2,$3,$4,'Asuncion',$5,60,30,true,2,-25.3,-57.6) returning id`,
+      [duenio, cats[slug], nombre, nombre.toLowerCase().replace(/ /g,'-')+'-t', tipo])).rows[0].id;
+    for (let d = 0; d < 7; d++) {
+      const h = (await c.query(
+        `insert into tesisreserva.business_hours (business_id, day_of_week, enabled)
+         values ($1,$2,true) returning id`, [b, d])).rows[0].id;
+      await c.query(`insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at)
+                     values ($1,'08:00','22:00')`, [h]);
+    }
+    return b;
+  };
+
+  // ── Lavadero: turno y nada mas ───────────────────────────────────────────
+  const lavadero = await mkRubro('slot', 'lavaderos', 'Lavadero Test');
+  await asUser(cliente);
+  await debeAndar(
+    'lavadero: reserva un turno sin elegir servicio ni cantidad',
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '10:00', null, null, null)).id`,
+    [lavadero],
+  );
+
+  // ── Spa de unas: el servicio es obligatorio ──────────────────────────────
+  const spa = await mkRubro('service', 'spa-de-unas', 'Spa Test');
+  await asUser(duenio);
+  const servicio = (await c.query(
+    `insert into tesisreserva.catalog_items (business_id, name, price, item_type, duration_minutes)
+     values ($1,'Semipermanente',80000,'service',45) returning id`, [spa])).rows[0].id;
+  await asUser(cliente);
+  await debeFallar(
+    'spa: NO deja reservar sin elegir el servicio',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '10:00', null, null, null)`,
+    [spa],
+  );
+  await debeAndar(
+    'spa: reserva eligiendo el servicio',
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '10:00', null, $2, null)).id`,
+    [spa, servicio],
+  );
+
+  // ── Hospedaje: por noches ────────────────────────────────────────────────
+  const hotel = await mkRubro('stay', 'hospedajes', 'Hospedaje Test');
+  await asUser(duenio);
+  await c.query(`insert into tesisreserva.business_capacity (business_id, party_size, quantity)
+                 values ($1,2,1)`, [hotel]);
+  await asUser(cliente);
+
+  await debeFallar(
+    'hospedaje: NO deja reservar sin fecha de salida',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', 2, null, null)`,
+    [hotel],
+  );
+  await debeFallar(
+    'hospedaje: la salida no puede ser antes que la entrada',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+5, '14:00', 2, null, null, tesisreserva.hoy()+3)`,
+    [hotel],
+  );
+  await debeAndar(
+    'hospedaje: reserva del 1 al 4 (3 noches)',
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', 2, null, null, tesisreserva.hoy()+4)).id`,
+    [hotel],
+  );
+  await debeFallar(
+    'hospedaje: con la unica habitacion ocupada, no entra otro que se superpone',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+2, '14:00', 2, null, null, tesisreserva.hoy()+3)`,
+    [hotel],
+  );
+  await debeAndar(
+    'hospedaje: SI entra alguien el mismo dia que el otro se va',
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+4, '14:00', 2, null, null, tesisreserva.hoy()+6)).id`,
+    [hotel],
+  );
+
+  const disp = await c.query(
+    `select remaining from tesisreserva.get_stay_availability($1, tesisreserva.hoy()+2, tesisreserva.hoy()+3)`,
+    [hotel]);
+  ok('la disponibilidad refleja la ocupacion', disp.rows[0]?.remaining === 0,
+     `(quedan ${disp.rows[0]?.remaining})`);
+
+  console.log('\n--- 12. Sena: el comprobante es obligatorio ---');
+  await asUser(duenio);
+  await c.query(
+    `update tesisreserva.businesses set deposit_enabled=true, deposit_amount=50000,
+       deposit_bank_name='Banco Test', deposit_account_number='123456' where id=$1`, [lavadero]);
+  await asUser(cliente);
+
+  await debeFallar(
+    'sin comprobante NO deja reservar donde piden sena',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '11:00', null, null, null)`,
+    [lavadero],
+  );
+  const conComp = await debeAndar(
+    'con comprobante si',
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '11:00', null, null, null, null,
+       $2)).id as id`,
+    [lavadero, cliente + '/comprobante-1.jpg'],
+  );
+  if (conComp) {
+    const g = await c.query(
+      `select deposit_proof_url, deposit_proof_at, deposit_required, deposit_amount
+         from tesisreserva.reservations where id=$1`, [conComp.rows[0].id]);
+    ok('queda guardado el comprobante', Boolean(g.rows[0].deposit_proof_url));
+    ok('queda la fecha de carga', g.rows[0].deposit_proof_at != null);
+    ok('la sena se calcula sola', Number(g.rows[0].deposit_amount) === 50000,
+       `(${g.rows[0].deposit_amount})`);
+  }
+
   console.log(`\n==========  ${pass} PASS  /  ${fail} FAIL  ==========`);
   if (fallos.length) {
     console.log('\nFallaron:');

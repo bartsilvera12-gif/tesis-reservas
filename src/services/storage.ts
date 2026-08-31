@@ -69,17 +69,18 @@ export async function uploadAvatar(userId: string, file: File): Promise<string> 
  *
  * El bucket es privado porque un comprobante muestra número de cuenta,
  * titular y monto. Por eso se guarda la ruta y la URL se pide después con
- * `signedProofUrl`, que caduca sola. La ruta empieza con el id de la reserva:
+ * `signedProofUrl`, que caduca sola. La ruta empieza con el id del cliente:
  * la política de Storage valida contra esa carpeta que quien sube sea el
- * cliente que reservó.
+ * quien sube sea su dueño. Se sube ANTES de crear la reserva: al revés, una
+ * subida fallida dejaría reservas sin comprobante justo cuando es obligatorio.
  */
 export async function uploadDepositProof(
-  reservationId: string,
+  userId: string,
   file: File,
 ): Promise<string> {
   validate(file);
 
-  const path = `${reservationId}/comprobante-${Date.now()}.${extensionOf(file)}`;
+  const path = `${userId}/comprobante-${Date.now()}.${extensionOf(file)}`;
 
   const { error } = await supabase.storage
     .from(BUCKET_PROOFS)

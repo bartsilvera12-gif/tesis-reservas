@@ -35,7 +35,7 @@ import {
 import { C } from '@/lib/theme';
 import { dayShort, money, shortTime } from '@/lib/format';
 import { ICONS } from '@/components/BottomNav';
-import type { BusinessHour, CatalogItem } from '@/types/db';
+import type { BusinessHour, BusinessWithMeta, CatalogItem } from '@/types/db';
 
 export function MyBusiness() {
   const { active, reload } = useOwnerBusiness();
@@ -978,9 +978,19 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
   const [amount, setAmount] = useState(String(Math.round(active?.deposit_amount ?? 0)));
   const [busy, setBusy] = useState(false);
 
+  // Datos de la cuenta a la que transferir. Se editan juntos y se guardan de
+  // una: escribir un número de cuenta a medias y que se guarde solo sería
+  // peor que no tenerlo.
+  const [banco, setBanco] = useState(active?.deposit_bank_name ?? '');
+  const [titular, setTitular] = useState(active?.deposit_account_holder ?? '');
+  const [cuenta, setCuenta] = useState(active?.deposit_account_number ?? '');
+  const [documento, setDocumento] = useState(active?.deposit_document_id ?? '');
+  const [indicaciones, setIndicaciones] = useState(active?.deposit_instructions ?? '');
+  const [guardandoBanco, setGuardandoBanco] = useState(false);
+
   if (!active) return null;
 
-  async function patch(next: Partial<{ deposit_enabled: boolean; deposit_amount: number; deposit_per_person: boolean }>) {
+  async function patch(next: Partial<BusinessWithMeta>) {
     setBusy(true);
     try {
       await updateBusiness(active!.id, next);
@@ -1057,9 +1067,77 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
             />
           </div>
 
+          <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 3 }}>
+              ¿A dónde te transfieren?
+            </div>
+            <div style={{ fontSize: 11.5, color: C.sub, lineHeight: 1.45, marginBottom: 10 }}>
+              Esto se le muestra al cliente al reservar, para que pueda pagar la seña y
+              subir el comprobante. Sin estos datos no sabe a dónde depositar.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <Field
+                label="Banco o billetera"
+                placeholder="Ej: Banco Itaú, Tigo Money"
+                value={banco}
+                onChange={(e) => setBanco(e.target.value)}
+              />
+              <Field
+                label="Titular de la cuenta"
+                placeholder="Nombre como figura en la cuenta"
+                value={titular}
+                onChange={(e) => setTitular(e.target.value)}
+              />
+              <Field
+                label="Número de cuenta o alias"
+                inputMode="numeric"
+                placeholder="Ej: 123456789"
+                value={cuenta}
+                onChange={(e) => setCuenta(e.target.value)}
+              />
+              <Field
+                label="Cédula o RUC (opcional)"
+                inputMode="numeric"
+                placeholder="Ej: 1234567-8"
+                value={documento}
+                onChange={(e) => setDocumento(e.target.value)}
+              />
+              <Field
+                label="Aclaraciones (opcional)"
+                multiline
+                rows={2}
+                placeholder="Ej: poné tu nombre en el concepto"
+                value={indicaciones}
+                onChange={(e) => setIndicaciones(e.target.value)}
+              />
+
+              <Button
+                loading={guardandoBanco}
+                onClick={async () => {
+                  setGuardandoBanco(true);
+                  try {
+                    await patch({
+                      deposit_bank_name: banco.trim() || null,
+                      deposit_account_holder: titular.trim() || null,
+                      deposit_account_number: cuenta.trim() || null,
+                      deposit_document_id: documento.trim() || null,
+                      deposit_instructions: indicaciones.trim() || null,
+                    });
+                    toast.success('Datos guardados.');
+                  } finally {
+                    setGuardandoBanco(false);
+                  }
+                }}
+              >
+                Guardar datos bancarios
+              </Button>
+            </div>
+          </div>
+
           <div style={{ fontSize: 11.5, color: C.sub, lineHeight: 1.45 }}>
-            Por ahora la seña se coordina directamente con el cliente: la app todavía no
-            cobra pagos.
+            La app no cobra pagos: la seña se transfiere directo a tu cuenta y vos
+            revisás el comprobante al aceptar la reserva.
           </div>
         </div>
       )}

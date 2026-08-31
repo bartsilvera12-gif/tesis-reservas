@@ -1147,6 +1147,7 @@ $$;
 -- La firma vieja se elimina: agregar un parametro con default crea una
 -- sobrecarga nueva y PostgREST no sabria cual llamar.
 drop function if exists tesisreserva.create_reservation(uuid, date, time, int, uuid, text);
+drop function if exists tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date);
 
 create or replace function tesisreserva.create_reservation(
   p_business_id     uuid,
@@ -1155,7 +1156,8 @@ create or replace function tesisreserva.create_reservation(
   p_party_size      int  default null,
   p_catalog_item_id uuid default null,
   p_notes           text default null,
-  p_check_out       date default null
+  p_check_out       date default null,
+  p_deposit_proof   text default null
 )
 returns tesisreserva.reservations
 language plpgsql
@@ -1193,6 +1195,15 @@ begin
 
   if p_date < tesisreserva.hoy() then
     raise exception 'No se puede reservar en una fecha pasada.' using errcode = '22007';
+  end if;
+
+  -- Si el local pide seña, sin comprobante no hay reserva. La validación vive
+  -- acá y no sólo en la pantalla: cualquiera puede llamar a la API por afuera,
+  -- y el dueño necesita el comprobante para decidir si acepta.
+  if v_biz.deposit_enabled and v_biz.deposit_amount > 0
+     and nullif(trim(coalesce(p_deposit_proof, '')), '') is null then
+    raise exception 'Subí el comprobante de la seña para confirmar la reserva.'
+      using errcode = '22023';
   end if;
 
   -- 3. item de carta / servicio (opcional)
@@ -1258,13 +1269,16 @@ begin
     insert into tesisreserva.reservations (
       reservation_code, client_id, business_id, catalog_item_id,
       reservation_date, check_out_date, reservation_time, party_size, duration_minutes,
-      status, notes, deposit_required, deposit_amount, deposit_status
+      status, notes, deposit_required, deposit_amount, deposit_status,
+      deposit_proof_url, deposit_proof_at
     ) values (
       tesisreserva.gen_reservation_code(), v_uid, p_business_id, p_catalog_item_id,
       p_date, p_check_out, p_time, p_party_size, v_duration,
       'pending', nullif(trim(coalesce(p_notes, '')), ''),
       v_deposit > 0, v_deposit,
-      case when v_deposit > 0 then 'pending' else 'none' end
+      case when v_deposit > 0 then 'pending' else 'none' end,
+      nullif(trim(coalesce(p_deposit_proof, '')), ''),
+      case when p_deposit_proof is not null then now() end
     ) returning * into v_res;
 
     insert into tesisreserva.reservation_status_history (reservation_id, previous_status, new_status, changed_by)
@@ -1363,13 +1377,16 @@ begin
   insert into tesisreserva.reservations (
     reservation_code, client_id, business_id, catalog_item_id,
     reservation_date, reservation_time, party_size, duration_minutes,
-    status, notes, deposit_required, deposit_amount, deposit_status
+    status, notes, deposit_required, deposit_amount, deposit_status,
+    deposit_proof_url, deposit_proof_at
   ) values (
     tesisreserva.gen_reservation_code(), v_uid, p_business_id, p_catalog_item_id,
     p_date, p_time, p_party_size, v_duration,
     'pending', nullif(trim(coalesce(p_notes, '')), ''),
     v_deposit > 0, v_deposit,
-    case when v_deposit > 0 then 'pending' else 'none' end
+    case when v_deposit > 0 then 'pending' else 'none' end,
+    nullif(trim(coalesce(p_deposit_proof, '')), ''),
+    case when p_deposit_proof is not null then now() end
   )
   returning * into v_res;
 
@@ -1851,7 +1868,7 @@ grant select, update         on tesisreserva.notifications              to authe
 
 -- RPC
 grant execute on function tesisreserva.get_availability(uuid, date, int)                        to anon, authenticated;
-grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date) to authenticated;
+grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date, text) to authenticated;
 grant execute on function tesisreserva.set_reservation_status(uuid, text, text)                 to authenticated;
 grant execute on function tesisreserva.reply_to_review(uuid, text)                              to authenticated;
 grant execute on function tesisreserva.become_owner()                                          to authenticated;
@@ -1885,42 +1902,41 @@ insert into storage.buckets (id, name, public)
 values ('tesisreserva-comprobantes', 'tesisreserva-comprobantes', false)
 on conflict (id) do nothing;
 
--- Sólo el cliente que reservó y el dueño del local pueden verlo.
+-- La carpeta es el id del CLIENTE, no el de la reserva. Es a propósito: el
+-- comprobante se sube antes de crear la reserva (si no, habría que crearla
+-- primero y después subir, y una subida fallida dejaría reservas sin
+-- comprobante justo cuando el comprobante es obligatorio).
 drop policy if exists tesisreserva_proof_read   on storage.objects;
 drop policy if exists tesisreserva_proof_write  on storage.objects;
 drop policy if exists tesisreserva_proof_update on storage.objects;
 
-create policy tesisreserva_proof_read on storage.objects
-  for select to authenticated
-  using (
-    bucket_id = 'tesisreserva-comprobantes'
-    and exists (
-      select 1 from tesisreserva.reservations r
-      where r.id = nullif((storage.foldername(name))[1], '')::uuid
-        and (r.client_id = auth.uid() or tesisreserva.is_business_owner(r.business_id))
-    )
-  );
-
--- Sube el cliente, y sólo a su propia reserva.
 create policy tesisreserva_proof_write on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'tesisreserva-comprobantes'
-    and exists (
-      select 1 from tesisreserva.reservations r
-      where r.id = nullif((storage.foldername(name))[1], '')::uuid
-        and r.client_id = auth.uid()
-    )
+    and (storage.foldername(name))[1] = auth.uid()::text
   );
 
 create policy tesisreserva_proof_update on storage.objects
   for update to authenticated
   using (
     bucket_id = 'tesisreserva-comprobantes'
-    and exists (
-      select 1 from tesisreserva.reservations r
-      where r.id = nullif((storage.foldername(name))[1], '')::uuid
-        and r.client_id = auth.uid()
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Lo ve quien lo subió, y el dueño del local únicamente si ese archivo está
+-- efectivamente adjuntado a una reserva suya.
+create policy tesisreserva_proof_read on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'tesisreserva-comprobantes'
+    and (
+      (storage.foldername(name))[1] = auth.uid()::text
+      or exists (
+        select 1 from tesisreserva.reservations r
+        where r.deposit_proof_url = storage.objects.name
+          and tesisreserva.is_business_owner(r.business_id)
+      )
     )
   );
 

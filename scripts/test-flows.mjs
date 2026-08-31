@@ -163,7 +163,7 @@ try {
 
   console.log('\n--- 5. Crear reserva (RPC transaccional) ---');
   const res1 = (await c.query(
-    `select * from tesisreserva.create_reservation($1,$2,'20:00',2,null,'sin sal')`,
+    `select * from tesisreserva.create_reservation($1,$2,'20:00',2,null,'sin sal',null,'comprobante.jpg')`,
     [biz, dateISO])).rows[0];
   ok('reserva creada', Boolean(res1?.id));
   ok('queda pendiente', res1.status === 'pending');
@@ -188,7 +188,7 @@ try {
   console.log('\n--- 6. Capacidad: el segundo intento debe rebotar ---');
   await asUser(cliB);
   await expectFail('sin mesas libres -> rechaza',
-    `select * from tesisreserva.create_reservation($1,$2,'20:00',2,null,null)`, [biz, dateISO]);
+    `select * from tesisreserva.create_reservation($1,$2,'20:00',2,null,null,null,'comprobante.jpg')`, [biz, dateISO]);
 
   const slots2 = await c.query(
     `select * from tesisreserva.get_availability($1,$2,2)`, [biz, dateISO]);
@@ -206,7 +206,7 @@ try {
 
   console.log('\n--- 7. Otra mesa (4 personas) sigue disponible ---');
   const res2 = (await c.query(
-    `select * from tesisreserva.create_reservation($1,$2,'20:00',4,null,null)`,
+    `select * from tesisreserva.create_reservation($1,$2,'20:00',4,null,null,null,'comprobante.jpg')`,
     [biz, dateISO])).rows[0];
   ok('reserva para 4 personas OK', Boolean(res2?.id));
 
@@ -288,23 +288,28 @@ try {
   console.log('\n--- 13. Reglas de negocio varias ---');
   await asUser(cliA);
   await expectFail('no se puede reservar en el pasado',
-    `select tesisreserva.create_reservation($1, current_date - 1, '20:00', 2, null, null)`, [biz]);
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy() - 1, '20:00', 2, null, null, null, 'comprobante.jpg')`, [biz]);
   await expectFail('no se puede reservar fuera de horario',
-    `select tesisreserva.create_reservation($1,$2,'03:00',2,null,null)`, [biz, dateISO]);
+    `select tesisreserva.create_reservation($1,$2,'03:00',2,null,null,null,'comprobante.jpg')`, [biz, dateISO]);
 
   // La regla ya no es "un dueño no puede reservar" sino "no en su propio
   // negocio": ahora un mismo correo sirve para vender y para reservar.
   await asUser(owner);
   await expectFail('nadie se reserva una mesa en su propio negocio',
-    `select tesisreserva.create_reservation($1,$2,'21:00',4,null,null)`, [biz, dateISO]);
+    `select tesisreserva.create_reservation($1,$2,'21:00',4,null,null,null,'comprobante.jpg')`, [biz, dateISO]);
 
   // owner2 tiene su propio local, así que acá actúa como cliente cualquiera.
   await asUser(owner2);
   const reservaCruzada = await c.query(
-    `select (tesisreserva.create_reservation($1,$2,'21:00',4,null,null)).reservation_code as cod`,
+    `select (tesisreserva.create_reservation($1,$2,'21:00',4,null,null,null,'comprobante.jpg')).reservation_code as cod`,
     [biz, dateISO]);
   ok('un dueño SÍ puede reservar en el local de otro',
     Boolean(reservaCruzada.rows[0].cod), `(${reservaCruzada.rows[0].cod})`);
+
+  // El negocio de prueba pide sena: sin comprobante la RPC ahora rechaza.
+  await asUser(cliA);
+  await expectFail('sin comprobante no se puede reservar donde piden sena',
+    `select tesisreserva.create_reservation($1,$2,'22:00',2,null,null)`, [biz, dateISO]);
 
   console.log('\n--- 14. El role no se puede cambiar desde el cliente ---');
   await asUser(cliA);
@@ -324,7 +329,7 @@ try {
   await expectFail('anon NO puede leer reservas',
     `select count(*) from tesisreserva.reservations`);
   await expectFail('anon no puede crear reservas',
-    `select tesisreserva.create_reservation($1,$2,'21:30',4,null,null)`, [biz, dateISO]);
+    `select tesisreserva.create_reservation($1,$2,'21:30',4,null,null,null,'comprobante.jpg')`, [biz, dateISO]);
   await expectFail('anon no puede leer profiles',
     `select count(*) from tesisreserva.profiles`);
   await expectFail('anon no puede leer notificaciones',

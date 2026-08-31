@@ -81,6 +81,12 @@ export interface Business {
   deposit_enabled: boolean;
   deposit_amount: number;
   deposit_per_person: boolean;
+  /** A dónde transferir la seña. Se le muestra al cliente al reservar. */
+  deposit_bank_name: string | null;
+  deposit_account_holder: string | null;
+  deposit_account_number: string | null;
+  deposit_document_id: string | null;
+  deposit_instructions: string | null;
   reservation_type: ReservationType;
   default_slot_duration_minutes: number;
   slot_step_minutes: number;
@@ -183,6 +189,11 @@ export interface Reservation {
   deposit_required: boolean;
   deposit_amount: number;
   deposit_status: DepositStatus;
+  /** Ruta del comprobante en Storage (bucket privado), no una URL. */
+  deposit_proof_url: string | null;
+  deposit_proof_at: string | null;
+  /** Sólo hospedajes: día de salida. La noche de salida no se ocupa. */
+  check_out_date: string | null;
   created_at: string;
   updated_at: string;
   cancelled_at: string | null;
