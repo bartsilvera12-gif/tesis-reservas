@@ -50,6 +50,9 @@ export const supabase = createClient(url, key, {
 
 /** Bucket para logos/portadas de negocios. Ruta: `<business_id>/<archivo>` */
 export const BUCKET_BUSINESSES = 'tesisreserva-businesses';
+/** Comprobantes de seña. Ruta: `<reservation_id>/<archivo>` */
+export const BUCKET_PROOFS = 'tesisreserva-comprobantes';
+
 /** Bucket para avatares. Ruta: `<user_id>/<archivo>` */
 export const BUCKET_AVATARS = 'tesisreserva-avatars';
 

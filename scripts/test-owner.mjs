@@ -169,7 +169,7 @@ try {
     const r = await c.query(
       `insert into tesisreserva.reservations
          (business_id, client_id, reservation_code, reservation_date, reservation_time, party_size, status)
-       values ($1,$2, tesisreserva.gen_reservation_code(), current_date + $3::int, '20:00', 2, $4)
+       values ($1,$2, tesisreserva.gen_reservation_code(), tesisreserva.hoy() + $3::int, '20:00', 2, $4)
        returning id`,
       [biz, cli, dias, estado],
     );
@@ -418,11 +418,11 @@ try {
   await c.query(
     `insert into tesisreserva.reservations
        (business_id, client_id, reservation_code, reservation_date, reservation_time, party_size, status)
-     values ($1,$2,tesisreserva.gen_reservation_code(),current_date,'20:00',2,'pending'),
-            ($1,$2,tesisreserva.gen_reservation_code(),current_date,'21:00',2,'confirmed'),
-            ($1,$2,tesisreserva.gen_reservation_code(),current_date + 3,'20:00',2,'pending'),
-            ($1,$2,tesisreserva.gen_reservation_code(),current_date - 3,'20:00',2,'completed'),
-            ($1,$2,tesisreserva.gen_reservation_code(),current_date + 1,'20:00',2,'cancelled')`,
+     values ($1,$2,tesisreserva.gen_reservation_code(),tesisreserva.hoy(),'20:00',2,'pending'),
+            ($1,$2,tesisreserva.gen_reservation_code(),tesisreserva.hoy(),'21:00',2,'confirmed'),
+            ($1,$2,tesisreserva.gen_reservation_code(),tesisreserva.hoy() + 3,'20:00',2,'pending'),
+            ($1,$2,tesisreserva.gen_reservation_code(),tesisreserva.hoy() - 3,'20:00',2,'completed'),
+            ($1,$2,tesisreserva.gen_reservation_code(),tesisreserva.hoy() + 1,'20:00',2,'cancelled')`,
     [biz, cliente],
   );
   await asUser(duenio);
@@ -486,6 +486,11 @@ try {
   );
 
   // El caso que estaba roto: reservar a la tarde una mesa para esa misma noche.
+  // Antes se reabre el dia: una prueba anterior cierra el domingo, y si hoy
+  // cae domingo esta fallaria por local cerrado y no por zona horaria.
+  await asAdmin();
+  await c.query(
+    `update tesisreserva.business_hours set enabled = true where business_id = $1`, [biz]);
   await asUser(cliente);
   const estaNoche = await c.query(
     `select count(*)::int n

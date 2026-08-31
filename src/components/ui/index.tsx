@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { CSSProperties, ReactNode, ButtonHTMLAttributes, InputHTMLAttributes } from 'react';
 import { C, FONT } from '@/lib/theme';
 import type { ReservationStatus } from '@/types/db';
@@ -289,6 +290,12 @@ interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function Field({ label, hint, error, multiline, rows = 3, style, ...rest }: FieldProps) {
+  // El ojito vive acá y no en cada pantalla: así todas las contraseñas de la
+  // app se comportan igual sin repetir el código cuatro veces.
+  const [verClave, setVerClave] = useState(false);
+  const esClave = rest.type === 'password';
+  const tipoReal = esClave && verClave ? 'text' : rest.type;
+
   const inputStyle: CSSProperties = {
     width: '100%',
     // Sin esto, input[type=date] impone su ancho mínimo intrínseco (~176px)
@@ -302,6 +309,8 @@ export function Field({ label, hint, error, multiline, rows = 3, style, ...rest 
     fontFamily: FONT.sans,
     color: C.ink,
     resize: 'vertical',
+    // Sin esto una contraseña larga corre por debajo del ojito.
+    ...(esClave ? { paddingRight: 48 } : null),
     ...style,
   };
 
@@ -318,6 +327,48 @@ export function Field({ label, hint, error, multiline, rows = 3, style, ...rest 
           style={inputStyle}
           {...(rest as unknown as React.TextareaHTMLAttributes<HTMLTextAreaElement>)}
         />
+      ) : esClave ? (
+        <span style={{ position: 'relative', display: 'block' }}>
+          <input style={inputStyle} {...rest} type={tipoReal} />
+          <button
+            type="button"
+            onClick={() => setVerClave((v) => !v)}
+            aria-label={verClave ? 'Ocultar la contraseña' : 'Mostrar la contraseña'}
+            aria-pressed={verClave}
+            // `tabIndex={-1}` a propósito: al tabular desde el campo se espera
+            // llegar al botón de enviar, no a un control auxiliar.
+            tabIndex={-1}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              height: '100%',
+              width: 46,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+            }}
+          >
+            {verClave ? (
+              /* Ojo tachado: la contraseña está a la vista */
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 6.5c3.8 0 7 2.4 8.3 5.5-.5 1.2-1.3 2.3-2.2 3.2l1.4 1.4c1.3-1.3 2.3-2.9 2.9-4.6C21 7.6 16.9 4.5 12 4.5c-1.3 0-2.6.2-3.8.7l1.6 1.6c.7-.2 1.4-.3 2.2-.3zM3.3 3.3 1.9 4.7l3 3C3 9 1.7 10.8 1 12.5 2.4 16.4 6.5 19.5 12 19.5c1.8 0 3.5-.4 5-1.1l3.3 3.3 1.4-1.4zM12 16.5c-3.8 0-7-2.4-8.3-5.5.6-1.4 1.6-2.6 2.8-3.5l2 2a3.5 3.5 0 0 0 4.5 4.5l1.4 1.4c-.7.2-1.5.3-2.4.3z"
+                  fill={C.sub}
+                />
+              </svg>
+            ) : (
+              /* Ojo abierto: la contraseña está oculta */
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 4.5C6.5 4.5 2.4 7.6 1 12c1.4 4.4 5.5 7.5 11 7.5S21.6 16.4 23 12c-1.4-4.4-5.5-7.5-11-7.5zm0 12c-3.8 0-7-2.4-8.3-4.5C5 9.4 8.2 7 12 7s7 2.4 8.3 4.5C19 13.6 15.8 16.5 12 16.5zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"
+                  fill={C.sub}
+                />
+              </svg>
+            )}
+          </button>
+        </span>
       ) : (
         <input style={inputStyle} {...rest} />
       )}

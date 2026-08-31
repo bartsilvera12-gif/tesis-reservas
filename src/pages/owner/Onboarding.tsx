@@ -15,6 +15,7 @@ import { MapView } from '@/components/MapView';
 import { Button, Field, Loading, Spinner } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
 import { dayShort, slugify } from '@/lib/format';
+import { rubroDe, tamanosIniciales } from '@/lib/rubros';
 import { ErrorImagen, LADO_LOGO, LADO_PORTADA, prepararImagen } from '@/lib/image';
 import type { BusinessWithMeta, ReservationType } from '@/types/db';
 
@@ -64,6 +65,12 @@ export function OwnerOnboarding() {
   const categoriesQuery = useAsync(() => fetchCategories(), []);
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
 
+  // Todo el paso de reservas se rotula según el rubro elegido.
+  const rubro = useMemo(
+    () => rubroDe(categories.find((c) => c.id === categoryId)?.slug),
+    [categories, categoryId],
+  );
+
   function next() {
     setError(null);
 
@@ -82,10 +89,14 @@ export function OwnerOnboarding() {
   async function onFinish() {
     setError(null);
 
-    if (reservationType === 'table') {
+    if (reservationType === 'table' || reservationType === 'stay') {
       const total = Object.values(tables).reduce((a, b) => a + b, 0);
       if (total === 0) {
-        setError('Configurá al menos una mesa para poder recibir reservas.');
+        setError(
+          reservationType === 'stay'
+            ? 'Configurá al menos un alojamiento para poder recibir reservas.'
+            : 'Configurá al menos una mesa para poder recibir reservas.',
+        );
         return;
       }
     }
@@ -119,8 +130,11 @@ export function OwnerOnboarding() {
         active: true,
         reservation_type: reservationType,
         default_slot_duration_minutes: duration,
-        slot_step_minutes: reservationType === 'table' ? 30 : 15,
-        max_concurrent_reservations: reservationType === 'service' ? maxConcurrent : 1,
+        slot_step_minutes: rubro.paso,
+        // 'table' y 'stay' llevan la capacidad en business_capacity (por
+        // tamaño); 'slot' y 'service' con un solo número de turnos a la vez.
+        max_concurrent_reservations:
+          reservationType === 'slot' || reservationType === 'service' ? maxConcurrent : 1,
       });
 
       await ensureBusinessHours(business.id, {
@@ -129,7 +143,7 @@ export function OwnerOnboarding() {
         closesAt,
       });
 
-      if (reservationType === 'table') {
+      if (reservationType === 'table' || reservationType === 'stay') {
         for (const [size, quantity] of Object.entries(tables)) {
           if (quantity > 0) await setCapacity(business.id, Number(size), quantity);
         }
@@ -217,10 +231,13 @@ export function OwnerOnboarding() {
                       key={cat.id}
                       onClick={() => {
                         setCategoryId(cat.id);
-                        // Barberías y spas trabajan con turnos, no con mesas.
-                        const isService = cat.slug === 'barberia' || cat.slug === 'spa';
-                        setReservationType(isService ? 'service' : 'table');
-                        setDuration(isService ? 45 : 90);
+                        // El rubro define cómo se reserva: no hace falta
+                        // preguntárselo aparte al dueño.
+                        const r = rubroDe(cat.slug);
+                        setReservationType(r.tipo);
+                        setDuration(r.duracion);
+                        const iniciales = tamanosIniciales(r.tipo);
+                        if (Object.keys(iniciales).length) setTables(iniciales);
                       }}
                       style={{
                         borderRadius: 999,
@@ -319,49 +336,6 @@ export function OwnerOnboarding() {
 
         {step === 2 && (
           <>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-                Tipo de reservas
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {(
-                  [
-                    { value: 'table', title: 'Por mesa', detail: 'Restaurantes, cafeterías' },
-                    { value: 'service', title: 'Por turno', detail: 'Barberías, spas' },
-                  ] as const
-                ).map((opt) => {
-                  const on = reservationType === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => setReservationType(opt.value)}
-                      style={{
-                        flex: 1,
-                        textAlign: 'left',
-                        borderRadius: 12,
-                        padding: '12px 14px',
-                        background: on ? C.cream : C.surface,
-                        border: `1.5px solid ${on ? C.terracotta : C.line}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: on ? C.terracottaDark : C.ink,
-                        }}
-                      >
-                        {opt.title}
-                      </div>
-                      <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>
-                        {opt.detail}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <Field
               label="Duración de cada reserva (minutos)"
               type="number"
@@ -424,10 +398,13 @@ export function OwnerOnboarding() {
               </div>
             </div>
 
-            {reservationType === 'table' ? (
+            {reservationType === 'table' || reservationType === 'stay' ? (
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-                  Mesas por tamaño
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+                  {rubro.capacidad.titulo}
+                </div>
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 8, lineHeight: 1.45 }}>
+                  {rubro.capacidad.ayuda}
                 </div>
                 <div
                   style={{
@@ -437,7 +414,10 @@ export function OwnerOnboarding() {
                     padding: '6px 16px',
                   }}
                 >
-                  {[2, 4, 6, 8].map((size) => (
+                  {Object.keys(tables)
+                    .map(Number)
+                    .sort((a, b) => a - b)
+                    .map((size) => (
                     <div
                       key={size}
                       style={{
@@ -449,7 +429,7 @@ export function OwnerOnboarding() {
                       }}
                     >
                       <span style={{ fontSize: 13.5, fontWeight: 600 }}>
-                        Mesa para {size}
+                        {rubro.capacidad.unidad(size)}
                       </span>
                       <Field
                         type="number"
@@ -471,8 +451,8 @@ export function OwnerOnboarding() {
               </div>
             ) : (
               <Field
-                label="Turnos simultáneos"
-                hint="Cuántas personas podés atender al mismo tiempo (ej: sillones o cabinas)."
+                label={rubro.capacidad.titulo}
+                hint={rubro.capacidad.ayuda}
                 type="number"
                 inputMode="numeric"
                 min={1}

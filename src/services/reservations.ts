@@ -40,6 +40,35 @@ export interface CreateReservationArgs {
   partySize: number | null;
   catalogItemId?: string | null;
   notes?: string | null;
+  /** Sólo hospedajes: el día de salida. La noche de salida no se ocupa. */
+  checkOut?: string | null;
+}
+
+export interface StaySlot {
+  party_size: number;
+  total: number;
+  remaining: number;
+}
+
+/**
+ * Alojamientos libres entre dos fechas.
+ *
+ * `fetchAvailability` no sirve para hospedajes: devuelve turnos de un día, y
+ * una estadía ocupa un rango entero.
+ */
+export async function fetchStayAvailability(
+  businessId: string,
+  checkIn: string,
+  checkOut: string,
+): Promise<StaySlot[]> {
+  const { data, error } = await supabase.rpc('get_stay_availability', {
+    p_business_id: businessId,
+    p_check_in: checkIn,
+    p_check_out: checkOut,
+  });
+
+  if (error) throw new Error(friendlyError(error, 'No pudimos ver la disponibilidad.'));
+  return (data ?? []) as StaySlot[];
 }
 
 /**
@@ -56,6 +85,7 @@ export async function createReservation(
     p_party_size: args.partySize,
     p_catalog_item_id: args.catalogItemId ?? null,
     p_notes: args.notes ?? null,
+    p_check_out: args.checkOut ?? null,
   });
 
   if (error) throw new Error(friendlyError(error, 'No pudimos crear la reserva.'));
@@ -115,4 +145,22 @@ export async function fetchBusinessReservations(
 
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar las reservas.'));
   return (data ?? []) as ReservationWithRelations[];
+}
+
+/**
+ * Deja el comprobante de la seña en la reserva.
+ *
+ * Va después de crear la reserva porque la política de Storage valida contra
+ * la carpeta de la reserva, que tiene que existir antes.
+ */
+export async function attachDepositProof(
+  reservationId: string,
+  url: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('reservations')
+    .update({ deposit_proof_url: url, deposit_proof_at: new Date().toISOString() })
+    .eq('id', reservationId);
+
+  if (error) throw new Error(friendlyError(error, 'No pudimos guardar el comprobante.'));
 }

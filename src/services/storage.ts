@@ -3,6 +3,7 @@ import {
   friendlyError,
   BUCKET_AVATARS,
   BUCKET_BUSINESSES,
+  BUCKET_PROOFS,
 } from '@/lib/supabase';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -61,4 +62,47 @@ export async function uploadAvatar(userId: string, file: File): Promise<string> 
 
   const { data } = supabase.storage.from(BUCKET_AVATARS).getPublicUrl(path);
   return data.publicUrl;
+}
+
+/**
+ * Sube el comprobante de la seña y devuelve su RUTA, no una URL.
+ *
+ * El bucket es privado porque un comprobante muestra número de cuenta,
+ * titular y monto. Por eso se guarda la ruta y la URL se pide después con
+ * `signedProofUrl`, que caduca sola. La ruta empieza con el id de la reserva:
+ * la política de Storage valida contra esa carpeta que quien sube sea el
+ * cliente que reservó.
+ */
+export async function uploadDepositProof(
+  reservationId: string,
+  file: File,
+): Promise<string> {
+  validate(file);
+
+  const path = `${reservationId}/comprobante-${Date.now()}.${extensionOf(file)}`;
+
+  const { error } = await supabase.storage
+    .from(BUCKET_PROOFS)
+    .upload(path, file, { upsert: true, contentType: file.type });
+
+  if (error) throw new Error(friendlyError(error, 'No pudimos subir el comprobante.'));
+  return path;
+}
+
+/**
+ * URL temporal para mirar un comprobante.
+ *
+ * Vale una hora: alcanza de sobra para verlo y evita que el enlace quede dando
+ * vueltas. Sólo la consiguen el cliente que reservó y el dueño del local; a
+ * cualquier otro, Storage le niega la firma.
+ */
+export async function signedProofUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(BUCKET_PROOFS)
+    .createSignedUrl(path, 60 * 60);
+
+  if (error || !data) {
+    throw new Error(friendlyError(error, 'No pudimos abrir el comprobante.'));
+  }
+  return data.signedUrl;
 }

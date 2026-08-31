@@ -24,7 +24,7 @@ export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'failed';
 
 export type ItemType = 'product' | 'service';
 
-export type ReservationType = 'table' | 'service';
+export type ReservationType = 'table' | 'service' | 'slot' | 'stay';
 
 export type NotificationType =
   | 'general'

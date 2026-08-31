@@ -7,29 +7,16 @@ import { C, FONT } from '@/lib/theme';
 
 type AccountType = 'client' | 'owner';
 
-const OPTIONS: { value: AccountType; title: string; detail: string }[] = [
-  {
-    value: 'client',
-    title: 'Cliente',
-    detail: 'Quiero descubrir lugares y realizar reservas.',
-  },
-  {
-    value: 'owner',
-    title: 'Dueño de negocio',
-    detail: 'Quiero gestionar mi negocio y recibir reservas.',
-  },
-];
-
 export function Register() {
   const { signUp } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  // La bienvenida puede preseleccionar el tipo, pero sigue siendo obligatorio.
+  // Viene de la bienvenida como ?tipo=. Si alguien entra directo a /registro
+  // sin pasar por ahí, se asume cliente: es lo que hace la mayoría, y el modo
+  // negocio se activa después desde el perfil sin crear otra cuenta.
   const preset = params.get('tipo');
-  const [role, setRole] = useState<AccountType | null>(
-    preset === 'client' || preset === 'owner' ? preset : null,
-  );
+  const role: AccountType = preset === 'owner' ? 'owner' : 'client';
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -45,7 +32,6 @@ export function Register() {
     if (!fullName.trim()) return setError('Decinos cómo te llamás.');
     if (!email.trim()) return setError('Necesitamos tu email.');
     if (password.length < 6) return setError('La contraseña necesita al menos 6 caracteres.');
-    if (!role) return setError('Elegí cómo vas a usar la aplicación.');
 
     setBusy(true);
     try {
@@ -148,88 +134,44 @@ export function Register() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          {/* Con qué intención se registra. No es una puerta cerrada: define
-              dónde cae al entrar, y el modo negocio se puede activar
-              después desde el perfil sin abrir otra cuenta. */}
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-              ¿Cómo vas a utilizar la aplicación?
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {OPTIONS.map((opt) => {
-                const active = role === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setRole(opt.value)}
-                    style={{
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      background: active ? C.cream : '#fff',
-                      border: `1.5px solid ${active ? C.terracotta : C.line}`,
-                      borderRadius: 14,
-                      padding: '14px 16px',
-                      transition: 'background .18s, border-color .18s',
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 20,
-                        height: 20,
-                        flexShrink: 0,
-                        borderRadius: '50%',
-                        border: `2px solid ${active ? C.terracotta : C.line}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      {active && (
-                        <span
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            background: C.terracotta,
-                          }}
-                        />
-                      )}
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span
-                        style={{
-                          display: 'block',
-                          fontSize: 15,
-                          fontWeight: 800,
-                          color: active ? C.terracottaDark : C.ink,
-                        }}
-                      >
-                        {opt.title}
-                      </span>
-                      <span
-                        style={{
-                          display: 'block',
-                          fontSize: 12.5,
-                          color: C.sub,
-                          marginTop: 2,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {opt.detail}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ fontSize: 11.5, color: C.sub, marginTop: 8, lineHeight: 1.45 }}>
-              Podés cambiar de idea: si elegís cliente y más adelante querés publicar
-              tu negocio, lo activás desde tu perfil con esta misma cuenta.
-            </div>
+          {/* El tipo de cuenta ya se eligió en la bienvenida ("Soy Cliente" /
+              "Tengo un negocio"), que llega como ?tipo=. Volver a preguntarlo
+              acá era pedir dos veces lo mismo. Se muestra qué se eligió y un
+              atajo para cambiarlo, en vez de un formulario nuevo. */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              background: C.cream,
+              border: `1px solid ${C.line}`,
+              borderRadius: 12,
+              padding: '12px 14px',
+            }}
+          >
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.45 }}>
+              Vas a crear una cuenta{' '}
+              <strong>{role === 'owner' ? 'para tu negocio' : 'de cliente'}</strong>.
+              {role === 'owner'
+                ? ' Después vas a poder cargar tu local.'
+                : ' Si más adelante tenés un negocio, lo activás desde tu perfil.'}
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate('/bienvenida')}
+              style={{
+                flexShrink: 0,
+                color: C.terracottaDark,
+                fontWeight: 700,
+                fontSize: 12.5,
+                background: 'none',
+                padding: '11px 6px',
+                margin: '-11px -6px',
+                minHeight: 44,
+              }}
+            >
+              Cambiar
+            </button>
           </div>
 
           {error && (

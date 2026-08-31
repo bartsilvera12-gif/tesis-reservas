@@ -214,14 +214,26 @@ create table if not exists tesisreserva.businesses (
   deposit_enabled               boolean     not null default false,
   deposit_amount                numeric(12,2) not null default 0,
   deposit_per_person            boolean     not null default true,
+  -- A dónde transferir la seña. Se le muestra al cliente al reservar, así que
+  -- son datos que el dueño publica a propósito, no información sensible suya.
+  deposit_bank_name             text,
+  deposit_account_holder        text,
+  deposit_account_number        text,
+  deposit_document_id           text,
+  deposit_instructions          text,
   reservation_type              text        not null default 'table',
   default_slot_duration_minutes int         not null default 90,
   slot_step_minutes             int         not null default 30,
   max_concurrent_reservations   int         not null default 1,
   created_at                    timestamptz not null default now(),
   updated_at                    timestamptz not null default now(),
+  -- Cómo reserva la gente en este local:
+  --   slot     turno y nada más           (lavaderos, peluquerías)
+  --   table    mesa según cuántos son     (restaurantes)
+  --   service  turno + el servicio        (spa de uñas)
+  --   stay     por noches, entrada/salida (hospedajes)
   constraint businesses_reservation_type_check
-    check (reservation_type in ('table', 'service')),
+    check (reservation_type in ('table', 'service', 'slot', 'stay')),
   constraint businesses_deposit_amount_check
     check (deposit_amount >= 0),
   constraint businesses_duration_check
@@ -235,6 +247,22 @@ create table if not exists tesisreserva.businesses (
   constraint businesses_longitude_check
     check (longitude is null or longitude between -180 and 180)
 );
+
+-- La tabla ya existe en las instalaciones anteriores, asi que las columnas
+-- nuevas van por ALTER: el `create table if not exists` de arriba no las
+-- agrega. Es idempotente y se puede volver a correr sin efecto.
+alter table tesisreserva.businesses
+  add column if not exists deposit_bank_name      text,
+  add column if not exists deposit_account_holder text,
+  add column if not exists deposit_account_number text,
+  add column if not exists deposit_document_id    text,
+  add column if not exists deposit_instructions   text;
+
+alter table tesisreserva.businesses
+  drop constraint if exists businesses_reservation_type_check;
+alter table tesisreserva.businesses
+  add constraint businesses_reservation_type_check
+  check (reservation_type in ('table', 'service', 'slot', 'stay'));
 
 create index if not exists idx_businesses_owner    on tesisreserva.businesses (owner_id);
 create index if not exists idx_businesses_category on tesisreserva.businesses (category_id);
@@ -411,6 +439,10 @@ create table if not exists tesisreserva.reservations (
   catalog_item_id     uuid        references tesisreserva.catalog_items (id) on delete set null,
   reservation_date    date        not null,
   reservation_time    time        not null,
+  -- Sólo para hospedajes: el día que se va. La noche de salida NO se ocupa,
+  -- por eso una estadía del 5 al 8 son 3 noches y el 8 ya se puede volver a
+  -- reservar. En el resto de los rubros queda nulo.
+  check_out_date      date,
   party_size          int,
   duration_minutes    int         not null default 90,
   status              text        not null default 'pending',
@@ -418,6 +450,9 @@ create table if not exists tesisreserva.reservations (
   deposit_required    boolean     not null default false,
   deposit_amount      numeric(12,2) not null default 0,
   deposit_status      text        not null default 'none',
+  -- Comprobante de la transferencia que sube el cliente.
+  deposit_proof_url   text,
+  deposit_proof_at    timestamptz,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   cancelled_at        timestamptz,
@@ -429,8 +464,23 @@ create table if not exists tesisreserva.reservations (
     deposit_status in ('none', 'pending', 'paid', 'refunded', 'failed')
   ),
   constraint reservations_party_size_check check (party_size is null or party_size between 1 and 50),
-  constraint reservations_duration_check   check (duration_minutes between 15 and 480)
+  constraint reservations_duration_check   check (duration_minutes between 15 and 480),
+  -- La salida siempre después de la entrada; sin salida es una reserva normal.
+  constraint reservations_stay_check check (
+    check_out_date is null or check_out_date > reservation_date
+  )
 );
+
+alter table tesisreserva.reservations
+  add column if not exists check_out_date    date,
+  add column if not exists deposit_proof_url text,
+  add column if not exists deposit_proof_at  timestamptz;
+
+alter table tesisreserva.reservations
+  drop constraint if exists reservations_stay_check;
+alter table tesisreserva.reservations
+  add constraint reservations_stay_check
+  check (check_out_date is null or check_out_date > reservation_date);
 
 create index if not exists idx_reservations_client   on tesisreserva.reservations (client_id);
 create index if not exists idx_reservations_business on tesisreserva.reservations (business_id);
@@ -1049,15 +1099,63 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+--  Disponibilidad de hospedajes (por noches, no por turno)
+-- ---------------------------------------------------------------------------
+
+/**
+ * Cuántos alojamientos de cada tamaño quedan libres entre dos fechas.
+ *
+ * `get_availability` no sirve acá: devuelve turnos de un día, y un hospedaje
+ * se ocupa por un rango completo. Se compara con `daterange`, que trata el
+ * intervalo como [entrada, salida): la noche de salida queda libre, así que
+ * alguien puede entrar el mismo día que otro se va.
+ */
+create or replace function tesisreserva.get_stay_availability(
+  p_business_id uuid,
+  p_check_in    date,
+  p_check_out   date
+)
+returns table (party_size int, total int, remaining int)
+language sql
+stable
+security definer
+set search_path = tesisreserva, public
+as $$
+  select c.party_size,
+         c.quantity as total,
+         greatest(
+           c.quantity - (
+             select count(*)::int
+               from tesisreserva.reservations r
+              where r.business_id = p_business_id
+                and r.status in ('pending', 'confirmed')
+                and r.party_size = c.party_size
+                and r.check_out_date is not null
+                and daterange(p_check_in, p_check_out)
+                    && daterange(r.reservation_date, r.check_out_date)
+           ), 0) as remaining
+    from tesisreserva.business_capacity c
+   where c.business_id = p_business_id
+     and c.active
+     and p_check_out > p_check_in
+   order by c.party_size;
+$$;
+
+-- ---------------------------------------------------------------------------
 --  Creación transaccional de la reserva (valida capacidad server-side)
 -- ---------------------------------------------------------------------------
+-- La firma vieja se elimina: agregar un parametro con default crea una
+-- sobrecarga nueva y PostgREST no sabria cual llamar.
+drop function if exists tesisreserva.create_reservation(uuid, date, time, int, uuid, text);
+
 create or replace function tesisreserva.create_reservation(
   p_business_id     uuid,
   p_date            date,
   p_time            time,
   p_party_size      int  default null,
   p_catalog_item_id uuid default null,
-  p_notes           text default null
+  p_notes           text default null,
+  p_check_out       date default null
 )
 returns tesisreserva.reservations
 language plpgsql
@@ -1107,7 +1205,85 @@ begin
     end if;
   end if;
 
+  -- En un spa de uñas (o similar) elegir el servicio es parte de la reserva:
+  -- sin eso no se sabe cuánto dura ni qué se va a hacer.
+  if v_biz.reservation_type = 'service' and p_catalog_item_id is null then
+    raise exception 'Elegí el servicio que querés reservar.' using errcode = '22023';
+  end if;
+
   v_duration := coalesce(v_item.duration_minutes, v_biz.default_slot_duration_minutes);
+
+  -- ── Hospedaje: se reserva por noches, no por turno ────────────────────────
+  if v_biz.reservation_type = 'stay' then
+    if p_check_out is null then
+      raise exception 'Elegí la fecha de salida.' using errcode = '22023';
+    end if;
+    if p_check_out <= p_date then
+      raise exception 'La salida tiene que ser después de la entrada.' using errcode = '22023';
+    end if;
+    if p_party_size is null then
+      raise exception 'Elegí para cuántas personas es.' using errcode = '22023';
+    end if;
+
+    perform pg_advisory_xact_lock(hashtext(p_business_id::text || '|stay'));
+
+    select coalesce(c.quantity, 0) into v_capacity
+      from tesisreserva.business_capacity c
+     where c.business_id = p_business_id and c.party_size = p_party_size and c.active;
+    v_capacity := coalesce(v_capacity, 0);
+
+    if v_capacity <= 0 then
+      raise exception 'No hay alojamientos para % personas.', p_party_size using errcode = '23514';
+    end if;
+
+    -- Se ocupa [entrada, salida): la noche de salida queda libre, por eso
+    -- alguien puede entrar el mismo día que otro se va.
+    select count(*)::int into v_used
+      from tesisreserva.reservations r
+     where r.business_id = p_business_id
+       and r.status in ('pending', 'confirmed')
+       and r.party_size = p_party_size
+       and r.check_out_date is not null
+       and daterange(p_date, p_check_out) && daterange(r.reservation_date, r.check_out_date);
+
+    if v_used >= v_capacity then
+      raise exception 'No quedan lugares para esas fechas.' using errcode = '23505';
+    end if;
+
+    if v_biz.deposit_enabled and v_biz.deposit_amount > 0 then
+      v_deposit := v_biz.deposit_amount
+                 * case when v_biz.deposit_per_person then coalesce(p_party_size, 1) else 1 end;
+    end if;
+
+    insert into tesisreserva.reservations (
+      reservation_code, client_id, business_id, catalog_item_id,
+      reservation_date, check_out_date, reservation_time, party_size, duration_minutes,
+      status, notes, deposit_required, deposit_amount, deposit_status
+    ) values (
+      tesisreserva.gen_reservation_code(), v_uid, p_business_id, p_catalog_item_id,
+      p_date, p_check_out, p_time, p_party_size, v_duration,
+      'pending', nullif(trim(coalesce(p_notes, '')), ''),
+      v_deposit > 0, v_deposit,
+      case when v_deposit > 0 then 'pending' else 'none' end
+    ) returning * into v_res;
+
+    insert into tesisreserva.reservation_status_history (reservation_id, previous_status, new_status, changed_by)
+    values (v_res.id, null, 'pending', v_uid);
+
+    if v_deposit > 0 then
+      insert into tesisreserva.reservation_payments (reservation_id, amount, currency, status)
+      values (v_res.id, v_deposit, 'PYG', 'pending');
+    end if;
+
+    insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
+    values (
+      v_biz.owner_id, 'Nueva reserva',
+      'Estadía del ' || to_char(p_date, 'DD/MM') || ' al ' || to_char(p_check_out, 'DD/MM') || '.',
+      'reservation_created', v_res.id
+    );
+
+    return v_res;
+  end if;
 
   -- 4. horario: el slot debe caer dentro de una franja habilitada
   v_dow := extract(dow from p_date)::int;
@@ -1135,6 +1311,8 @@ begin
     hashtext(p_business_id::text || '|' || p_date::text)
   );
 
+  -- 'slot' (lavadero, peluquería) y 'service' (spa de uñas) usan el mismo
+  -- cupo simultáneo; sólo se diferencian en si hay que elegir un servicio.
   if v_biz.reservation_type = 'table' then
     if p_party_size is null then
       raise exception 'Elegí para cuántas personas es la reserva.' using errcode = '22023';
@@ -1673,11 +1851,12 @@ grant select, update         on tesisreserva.notifications              to authe
 
 -- RPC
 grant execute on function tesisreserva.get_availability(uuid, date, int)                        to anon, authenticated;
-grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text)    to authenticated;
+grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date) to authenticated;
 grant execute on function tesisreserva.set_reservation_status(uuid, text, text)                 to authenticated;
 grant execute on function tesisreserva.reply_to_review(uuid, text)                              to authenticated;
 grant execute on function tesisreserva.become_owner()                                          to authenticated;
 grant execute on function tesisreserva.business_stats(uuid)                                     to authenticated;
+grant execute on function tesisreserva.get_stay_availability(uuid, date, date)                  to anon, authenticated;
 grant execute on function tesisreserva.recommended_businesses(int)                              to authenticated;
 
 -- Las secuencias las manejan los defaults de las tablas (gen_random_uuid),
@@ -1699,7 +1878,53 @@ insert into storage.buckets (id, name, public)
 values ('tesisreserva-avatars', 'tesisreserva-avatars', true)
 on conflict (id) do nothing;
 
--- Lectura pública de ambos buckets
+-- Comprobantes de seña. PRIVADO a propósito: un comprobante de transferencia
+-- muestra número de cuenta, titular y monto. En un bucket público cualquiera
+-- con la URL lo vería, y esas URLs viajan por notificaciones y capturas.
+insert into storage.buckets (id, name, public)
+values ('tesisreserva-comprobantes', 'tesisreserva-comprobantes', false)
+on conflict (id) do nothing;
+
+-- Sólo el cliente que reservó y el dueño del local pueden verlo.
+drop policy if exists tesisreserva_proof_read   on storage.objects;
+drop policy if exists tesisreserva_proof_write  on storage.objects;
+drop policy if exists tesisreserva_proof_update on storage.objects;
+
+create policy tesisreserva_proof_read on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'tesisreserva-comprobantes'
+    and exists (
+      select 1 from tesisreserva.reservations r
+      where r.id = nullif((storage.foldername(name))[1], '')::uuid
+        and (r.client_id = auth.uid() or tesisreserva.is_business_owner(r.business_id))
+    )
+  );
+
+-- Sube el cliente, y sólo a su propia reserva.
+create policy tesisreserva_proof_write on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'tesisreserva-comprobantes'
+    and exists (
+      select 1 from tesisreserva.reservations r
+      where r.id = nullif((storage.foldername(name))[1], '')::uuid
+        and r.client_id = auth.uid()
+    )
+  );
+
+create policy tesisreserva_proof_update on storage.objects
+  for update to authenticated
+  using (
+    bucket_id = 'tesisreserva-comprobantes'
+    and exists (
+      select 1 from tesisreserva.reservations r
+      where r.id = nullif((storage.foldername(name))[1], '')::uuid
+        and r.client_id = auth.uid()
+    )
+  );
+
+-- Lectura pública de los buckets de imágenes (los comprobantes NO entran acá)
 drop policy if exists tesisreserva_public_read on storage.objects;
 create policy tesisreserva_public_read on storage.objects
   for select to anon, authenticated
@@ -1815,4 +2040,19 @@ grant select on tesisreserva.review_authors to anon, authenticated;
 --
 -- Va al final de la migración a propósito: así viaja con el SQL y lo recibe
 -- cualquiera que lo aplique, sin depender de acordarse de hacerlo aparte.
+-- ============================================================================
+--  CATEGORIAS DEL CATALOGO
+-- ============================================================================
+
+-- Las categorías son globales (sólo un admin las administra) y definen con qué
+-- lógica reserva cada rubro. `sugerido` es lo que el onboarding propone: el
+-- dueño lo ve ya elegido y no tiene que entender los tipos internos.
+insert into tesisreserva.business_categories (name, slug) values
+  ('Lavaderos',     'lavaderos'),
+  ('Peluquerías',   'peluquerias'),
+  ('Restaurantes',  'restaurantes'),
+  ('Hospedajes',    'hospedajes'),
+  ('Spa de uñas',   'spa-de-unas')
+on conflict (slug) do update set name = excluded.name;
+
 notify pgrst, 'reload schema';
