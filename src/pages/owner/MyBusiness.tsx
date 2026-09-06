@@ -830,23 +830,13 @@ function CatalogCard({ toast }: { toast: Toast }) {
                   >
                     {item.name}
                   </div>
-                  {item.duration_minutes && (
-                    <div style={{ fontSize: 11.5, color: C.sub }}>
-                      {item.duration_minutes} min
-                    </div>
-                  )}
+                  <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>
+                    <span style={{ fontWeight: 700, color: C.terracottaDark }}>
+                      {money(item.price)}
+                    </span>
+                    {item.duration_minutes ? ` · ${item.duration_minutes} min` : ''}
+                  </div>
                 </button>
-
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: C.terracottaDark,
-                    flexShrink: 0,
-                  }}
-                >
-                  {money(item.price)}
-                </span>
 
                 <Switch checked={item.active} onChange={() => void toggleActive(item)} />
 
@@ -1054,9 +1044,12 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
     }
   }
 
-  // Pedir seña sin decir a qué cuenta transferir deja al cliente trabado: ve
-  // el monto y no tiene dónde pagarlo.
-  const faltaCuenta = active.deposit_enabled && !active.deposit_account_number?.trim();
+  // La seña sólo se cobra si además hay un monto: con el monto en cero la
+  // reserva sale igual, sin pedir comprobante.
+  const cobraSena = active.deposit_enabled && active.deposit_amount > 0;
+  // Pedir seña sin decir a qué cuenta transferir sí deja al cliente trabado:
+  // ve el monto, tiene que subir el comprobante y no tiene dónde pagarlo.
+  const faltaCuenta = cobraSena && !active.deposit_account_number?.trim();
 
   return (
     <Seccion
@@ -1065,11 +1058,13 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
       resumen={
         !active.deposit_enabled
           ? 'Desactivada: se reserva sin seña'
-          : faltaCuenta
-            ? 'Falta cargar la cuenta para transferir'
-            : `${money(active.deposit_amount)} ${
-                active.deposit_per_person ? 'por persona' : 'por reserva'
-              }`
+          : !cobraSena
+            ? 'Activada, pero sin monto: no se cobra nada'
+            : faltaCuenta
+              ? 'Falta cargar la cuenta para transferir'
+              : `${money(active.deposit_amount)} ${
+                  active.deposit_per_person ? 'por persona' : 'por reserva'
+                }`
       }
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1385,6 +1380,9 @@ function AlojamientosCard({ toast }: { toast: Toast }) {
                   opacity: item.active ? 1 : 0.5,
                 }}
               >
+                {/* El precio va en la línea de abajo y no al costado: en un
+                    teléfono, un nombre como "Cabaña familiar con parrilla" se
+                    cortaba a la mitad para dejarle lugar. */}
                 <button
                   onClick={() => setEditando(item)}
                   style={{ flex: 1, minWidth: 0, textAlign: 'left', minHeight: 44 }}
@@ -1401,27 +1399,24 @@ function AlojamientosCard({ toast }: { toast: Toast }) {
                   >
                     {item.name}
                   </div>
-                  <div style={{ fontSize: 11.5, color: C.sub, marginTop: 1 }}>
+                  <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        color: item.price > 0 ? C.terracottaDark : C.muted,
+                      }}
+                    >
+                      {item.price > 0 ? `${money(item.price)} / noche` : 'Sin precio'}
+                    </span>
+                    {' · '}
                     {[
-                      item.capacity ? `hasta ${item.capacity} personas` : null,
+                      item.capacity ? `hasta ${item.capacity}` : null,
                       `${item.units} unidad${item.units === 1 ? '' : 'es'}`,
                     ]
                       .filter(Boolean)
                       .join(' · ')}
                   </div>
                 </button>
-
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: item.price > 0 ? C.terracottaDark : C.muted,
-                    flexShrink: 0,
-                    textAlign: 'right',
-                  }}
-                >
-                  {item.price > 0 ? money(item.price) : 'Sin precio'}
-                </span>
 
                 <Switch checked={item.active} onChange={() => void alternar(item)} />
 
