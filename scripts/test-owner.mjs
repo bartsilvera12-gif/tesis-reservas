@@ -636,44 +636,117 @@ try {
     [spa, servicio],
   );
 
-  // ── Hospedaje: por noches ────────────────────────────────────────────────
+  // ── Hospedaje: alojamientos con nombre y precio, reservados por noches ───
   const hotel = await mkRubro('stay', 'hospedajes', 'Hospedaje Test');
   await asUser(duenio);
-  await c.query(`insert into tesisreserva.business_capacity (business_id, party_size, quantity)
-                 values ($1,2,1)`, [hotel]);
+  // Dos alojamientos DISTINTOS para la misma cantidad de personas. Con el
+  // modelo viejo (capacidad por tamano) eran la misma fila y no se podian
+  // distinguir: reservar uno bloqueaba el otro.
+  const cabania = (await c.query(
+    `insert into tesisreserva.catalog_items
+       (business_id, name, description, price, item_type, capacity, units)
+     values ($1,'Cabania del Lago','Con parrilla',350000,'room',2,1) returning id`,
+    [hotel])).rows[0].id;
+  const habitacion = (await c.query(
+    `insert into tesisreserva.catalog_items
+       (business_id, name, price, item_type, capacity, units)
+     values ($1,'Habitacion estandar',180000,'room',2,1) returning id`,
+    [hotel])).rows[0].id;
+  const suite = (await c.query(
+    `insert into tesisreserva.catalog_items
+       (business_id, name, price, item_type, capacity, units)
+     values ($1,'Suite familiar',500000,'room',6,1) returning id`,
+    [hotel])).rows[0].id;
   await asUser(cliente);
 
   await debeFallar(
     'hospedaje: NO deja reservar sin fecha de salida',
-    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', 2, null, null)`,
-    [hotel],
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', 2, $2, null)`,
+    [hotel, cabania],
   );
   await debeFallar(
     'hospedaje: la salida no puede ser antes que la entrada',
-    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+5, '14:00', 2, null, null, tesisreserva.hoy()+3)`,
-    [hotel],
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+5, '14:00', 2, $2, null, tesisreserva.hoy()+3)`,
+    [hotel, cabania],
   );
-  await debeAndar(
-    'hospedaje: reserva del 1 al 4 (3 noches)',
-    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', 2, null, null, tesisreserva.hoy()+4)).id`,
+  await debeFallar(
+    'hospedaje: NO deja reservar sin elegir el alojamiento',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', 2, null, null, tesisreserva.hoy()+4)`,
     [hotel],
   );
   await debeFallar(
-    'hospedaje: con la unica habitacion ocupada, no entra otro que se superpone',
-    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+2, '14:00', 2, null, null, tesisreserva.hoy()+3)`,
-    [hotel],
+    'hospedaje: NO entran mas personas de las que admite',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', 5, $2, null, tesisreserva.hoy()+4)`,
+    [hotel, cabania],
+  );
+  await debeAndar(
+    'hospedaje: reserva la cabania del 1 al 4 (3 noches)',
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', 2, $2, null, tesisreserva.hoy()+4)).id`,
+    [hotel, cabania],
+  );
+  await debeFallar(
+    'hospedaje: con la cabania ocupada, no entra otro que se superpone',
+    `select tesisreserva.create_reservation($1, tesisreserva.hoy()+2, '14:00', 2, $2, null, tesisreserva.hoy()+3)`,
+    [hotel, cabania],
+  );
+  // Lo que el modelo viejo no podia: la habitacion tambien es para 2 y esta
+  // libre, aunque la cabania este tomada esas mismas noches.
+  const reservaHabitacion = await debeAndar(
+    'hospedaje: OTRO alojamiento del mismo tamanio sigue libre',
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+2, '14:00', 2, $2, null, tesisreserva.hoy()+3)).id`,
+    [hotel, habitacion],
   );
   await debeAndar(
     'hospedaje: SI entra alguien el mismo dia que el otro se va',
-    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+4, '14:00', 2, null, null, tesisreserva.hoy()+6)).id`,
-    [hotel],
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+4, '14:00', 2, $2, null, tesisreserva.hoy()+6)).id`,
+    [hotel, cabania],
   );
+  // Sin decir cuantos van se asume el alojamiento completo: le ahorra un paso
+  // a quien reserva una cabania entera.
+  const sinPersonas = await debeAndar(
+    'hospedaje: sin decir cuantos van, ocupa el alojamiento completo',
+    `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '14:00', null, $2, null, tesisreserva.hoy()+3)).id`,
+    [hotel, suite],
+  );
+  if (sinPersonas) {
+    const r = await c.query(
+      `select party_size from tesisreserva.reservations where id=$1`,
+      [sinPersonas.rows[0].id]);
+    ok('queda anotado para las 6 personas que entran', r.rows[0]?.party_size === 6,
+       `(quedo en ${r.rows[0]?.party_size})`);
+  }
 
   const disp = await c.query(
-    `select remaining from tesisreserva.get_stay_availability($1, tesisreserva.hoy()+2, tesisreserva.hoy()+3)`,
+    `select item_id, name, price, remaining
+       from tesisreserva.get_stay_availability($1, tesisreserva.hoy()+2, tesisreserva.hoy()+3)`,
     [hotel]);
-  ok('la disponibilidad refleja la ocupacion', disp.rows[0]?.remaining === 0,
-     `(quedan ${disp.rows[0]?.remaining})`);
+  const porNombre = Object.fromEntries(disp.rows.map((r) => [r.name, r]));
+  ok('la disponibilidad lista los tres alojamientos', disp.rows.length === 3,
+     `(vinieron ${disp.rows.length})`);
+  ok('la cabania ocupada no queda libre',
+     porNombre['Cabania del Lago']?.remaining === 0,
+     `(quedan ${porNombre['Cabania del Lago']?.remaining})`);
+  ok('la habitacion tambien ocupada no queda libre',
+     porNombre['Habitacion estandar']?.remaining === 0,
+     `(quedan ${porNombre['Habitacion estandar']?.remaining})`);
+  ok('viene el precio por noche para poder mostrarlo',
+     Number(porNombre['Cabania del Lago']?.price) === 350000,
+     `(vino ${porNombre['Cabania del Lago']?.price})`);
+
+  // Un alojamiento dado de baja desaparece de la busqueda, pero la reserva
+  // que ya lo tenia no se toca.
+  await asUser(duenio);
+  await c.query(`update tesisreserva.catalog_items set active=false where id=$1`, [habitacion]);
+  await asUser(cliente);
+  const dispBaja = await c.query(
+    `select name from tesisreserva.get_stay_availability($1, tesisreserva.hoy()+8, tesisreserva.hoy()+9)`,
+    [hotel]);
+  ok('un alojamiento dado de baja ya no se ofrece',
+     !dispBaja.rows.some((r) => r.name === 'Habitacion estandar'));
+  const sigue = await c.query(
+    `select id from tesisreserva.reservations where id=$1`,
+    [reservaHabitacion.rows[0].id]);
+  ok('la reserva que ya lo tenia sigue existiendo', sigue.rows.length === 1);
 
   console.log('\n--- 12. Sena: el comprobante es obligatorio ---');
   await asUser(duenio);

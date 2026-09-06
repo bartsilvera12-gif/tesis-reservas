@@ -11,7 +11,7 @@ import { uploadDepositProof } from '@/services/storage';
 import { useAuth } from '@/context/AuthContext';
 import { esPorNoches, exigeServicio, usaCantidadDePersonas } from '@/lib/rubros';
 import { LADO_PORTADA, prepararImagen, ErrorImagen } from '@/lib/image';
-import { Button, Field, Loading, StateView, TopBar } from '@/components/ui';
+import { Button, Field, Loading, StateView, Stepper, TopBar } from '@/components/ui';
 import { C } from '@/lib/theme';
 import { dayShort, money, shortTime, toISODate } from '@/lib/format';
 
@@ -95,8 +95,14 @@ export function Reserve() {
     { enabled: porNoches && Boolean(checkOut) && checkOut > date },
   );
   const alojamientos = useMemo(
-    () => (estadiaQuery.data ?? []).filter((a) => a.total > 0),
+    () => (estadiaQuery.data ?? []).filter((a) => a.units > 0),
     [estadiaQuery.data],
+  );
+
+  /** El alojamiento elegido, para el precio y el tope de huéspedes. */
+  const alojamiento = useMemo(
+    () => alojamientos.find((a) => a.item_id === itemId) ?? null,
+    [alojamientos, itemId],
   );
 
   if (bizQuery.loading && !business) return <Loading label="Cargando…" />;
@@ -127,7 +133,7 @@ export function Reserve() {
   const faltan: string[] = [];
   if (porNoches) {
     if (!checkOut || checkOut <= date) faltan.push('la fecha de salida');
-    if (partySize === null) faltan.push('el alojamiento');
+    if (!itemId) faltan.push('el alojamiento');
   } else {
     if (!time) faltan.push('un horario');
     if (usaPersonas && partySize === null) faltan.push('para cuántas personas');
@@ -185,6 +191,7 @@ export function Reserve() {
       // Pudo ocuparse mientras elegías: se refresca lo que corresponda.
       if (porNoches) {
         estadiaQuery.reload();
+        setItemId(null);
         setPartySize(null);
       } else {
         slotsQuery.reload();
@@ -255,6 +262,7 @@ export function Reserve() {
                   min={date}
                   onChange={(e) => {
                     setCheckOut(e.target.value);
+                    setItemId(null);
                     setPartySize(null);
                   }}
                 />
@@ -289,41 +297,147 @@ export function Reserve() {
                   lineHeight: 1.45,
                 }}
               >
-                Este hospedaje todavía no cargó sus habitaciones.
+                Este hospedaje todavía no cargó sus alojamientos.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {alojamientos.map((a) => {
                   const libre = a.remaining > 0;
-                  const on = partySize === a.party_size;
+                  const on = itemId === a.item_id;
                   return (
                     <button
-                      key={a.party_size}
+                      key={a.item_id}
                       disabled={!libre}
-                      onClick={() => setPartySize(a.party_size)}
+                      onClick={() => {
+                        setItemId(a.item_id);
+                        // Se asume que ocupan el alojamiento entero: es lo
+                        // habitual y así no hay un paso más que completar.
+                        setPartySize(a.capacity ?? 1);
+                      }}
                       style={{
                         textAlign: 'left',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 10,
+                        display: 'block',
+                        width: '100%',
                         borderRadius: 12,
                         padding: '13px 15px',
-                        minHeight: 46,
                         background: on ? C.cream : C.surface,
                         border: `1.5px solid ${on ? C.terracotta : C.line}`,
                         opacity: libre ? 1 : 0.5,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 700 }}>
-                        Para {a.party_size} persona{a.party_size === 1 ? '' : 's'}
+                      <span
+                        style={{
+                          display: 'flex',
+                          alignItems: 'baseline',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                        }}
+                      >
+                        <span style={{ fontSize: 14, fontWeight: 700, minWidth: 0 }}>
+                          {a.name}
+                        </span>
+                        {a.price > 0 && (
+                          <span
+                            style={{
+                              fontSize: 13.5,
+                              fontWeight: 800,
+                              color: C.terracottaDark,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {money(a.price)}
+                            <span style={{ fontSize: 11, fontWeight: 600, color: C.sub }}>
+                              {' / noche'}
+                            </span>
+                          </span>
+                        )}
                       </span>
-                      <span style={{ fontSize: 12.5, color: libre ? C.sub : C.danger }}>
-                        {libre ? `${a.remaining} disponible${a.remaining === 1 ? '' : 's'}` : 'Sin lugar'}
+
+                      {a.description && (
+                        <span
+                          style={{
+                            display: 'block',
+                            fontSize: 12.5,
+                            color: C.sub,
+                            lineHeight: 1.45,
+                            marginTop: 3,
+                          }}
+                        >
+                          {a.description}
+                        </span>
+                      )}
+
+                      <span
+                        style={{
+                          display: 'flex',
+                          gap: 8,
+                          marginTop: 6,
+                          fontSize: 12,
+                          color: libre ? C.sub : C.danger,
+                        }}
+                      >
+                        {a.capacity ? <span>Hasta {a.capacity} personas</span> : null}
+                        {a.capacity ? <span aria-hidden>·</span> : null}
+                        <span>
+                          {libre
+                            ? `Quedan ${a.remaining}`
+                            : 'Sin disponibilidad en esas fechas'}
+                        </span>
                       </span>
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Huéspedes: lo resuelve el alojamiento elegido, pero se puede
+                bajar si van menos. Importa cuando la seña es por persona. */}
+            {alojamiento && (alojamiento.capacity ?? 1) > 1 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  marginTop: 12,
+                  padding: '12px 15px',
+                  borderRadius: 12,
+                  background: C.surface,
+                  border: `1px solid ${C.line}`,
+                }}
+              >
+                <span style={{ fontSize: 13.5, fontWeight: 700 }}>¿Cuántos van?</span>
+                <Stepper
+                  value={partySize ?? alojamiento.capacity ?? 1}
+                  min={1}
+                  max={alojamiento.capacity ?? 1}
+                  onChange={setPartySize}
+                />
+              </div>
+            )}
+
+            {/* El total de la estadía. Es lo primero que se quiere saber y
+                hasta ahora había que sacarlo a mano. */}
+            {alojamiento && alojamiento.price > 0 && checkOut > date && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  marginTop: 10,
+                  padding: '12px 15px',
+                  borderRadius: 12,
+                  background: C.cream,
+                }}
+              >
+                <span style={{ fontSize: 12.5, color: C.sub }}>
+                  {noches(date, checkOut)} noche{noches(date, checkOut) === 1 ? '' : 's'} ×{' '}
+                  {money(alojamiento.price)}
+                </span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: C.terracottaDark }}>
+                  {money(alojamiento.price * noches(date, checkOut))}
+                </span>
               </div>
             )}
           </>

@@ -11,6 +11,7 @@ import { countUnread } from '@/services/notifications';
 import { fetchMyReservations } from '@/services/reservations';
 import { Button, Field, PageTitle, Sheet, Spinner } from '@/components/ui';
 import { C } from '@/lib/theme';
+import { guardarModo } from '@/lib/modo';
 import { initials } from '@/lib/format';
 import { ICONS } from '@/components/BottomNav';
 
@@ -101,6 +102,7 @@ export function Profile() {
       await becomeOwner();
       // Sin esto el guard sigue viendo la cuenta como cliente y rebota.
       await refreshProfile();
+      if (profile) guardarModo(profile.id, 'owner');
       navigate('/panel', { replace: true });
     } catch (err) {
       toast.fail(err instanceof Error ? err.message : 'No pudimos activar el modo negocio.');
@@ -251,7 +253,11 @@ export function Profile() {
             negocio ya está activado o todavía no. */}
         {profile.is_owner ? (
           <button
-            onClick={() => navigate('/panel')}
+            onClick={() => {
+              // Queda anotado para abrir acá la próxima vez.
+              guardarModo(profile.id, 'owner');
+              navigate('/panel');
+            }}
             style={{
               background: C.cream,
               border: `1px solid ${C.terracotta}`,

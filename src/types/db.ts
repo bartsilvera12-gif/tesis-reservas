@@ -22,7 +22,8 @@ export type DepositStatus = 'none' | 'pending' | 'paid' | 'refunded' | 'failed';
 
 export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'failed';
 
-export type ItemType = 'product' | 'service';
+/** 'room' es un tipo de alojamiento de un hospedaje: cabaña, habitación… */
+export type ItemType = 'product' | 'service' | 'room';
 
 export type ReservationType = 'table' | 'service' | 'slot' | 'stay';
 
@@ -151,6 +152,10 @@ export interface CatalogItem {
   price: number;
   item_type: ItemType;
   duration_minutes: number | null;
+  /** Sólo alojamientos: cuántas personas entran. */
+  capacity: number | null;
+  /** Sólo alojamientos: cuántas unidades iguales hay de este tipo. */
+  units: number;
   image_url: string | null;
   active: boolean;
   sort_order: number;

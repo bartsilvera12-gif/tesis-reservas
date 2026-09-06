@@ -178,6 +178,9 @@ export function MyBookings() {
                       `${noches(r.reservation_date, r.check_out_date)} noche${
                         noches(r.reservation_date, r.check_out_date) === 1 ? '' : 's'
                       }`,
+                      // Qué alojamiento es: en un hospedaje con varias cabañas
+                      // es el dato que distingue una reserva de otra.
+                      r.catalog_item?.name,
                       r.party_size ? `${r.party_size} personas` : null,
                     ]
                   : [

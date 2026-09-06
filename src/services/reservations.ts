@@ -46,9 +46,17 @@ export interface CreateReservationArgs {
   depositProof?: string | null;
 }
 
-export interface StaySlot {
-  party_size: number;
-  total: number;
+/** Un tipo de alojamiento con lo que queda libre en el rango consultado. */
+export interface StayUnit {
+  item_id: string;
+  name: string;
+  description: string | null;
+  /** Precio por noche. 0 si el hospedaje prefiere no publicarlo. */
+  price: number;
+  /** Cuántas personas entran. */
+  capacity: number | null;
+  /** Cuántas unidades iguales tiene el hospedaje. */
+  units: number;
   remaining: number;
 }
 
@@ -62,7 +70,7 @@ export async function fetchStayAvailability(
   businessId: string,
   checkIn: string,
   checkOut: string,
-): Promise<StaySlot[]> {
+): Promise<StayUnit[]> {
   const { data, error } = await supabase.rpc('get_stay_availability', {
     p_business_id: businessId,
     p_check_in: checkIn,
@@ -70,7 +78,7 @@ export async function fetchStayAvailability(
   });
 
   if (error) throw new Error(friendlyError(error, 'No pudimos ver la disponibilidad.'));
-  return (data ?? []) as StaySlot[];
+  return (data ?? []) as StayUnit[];
 }
 
 /**

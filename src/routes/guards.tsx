@@ -1,9 +1,11 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { OwnerBusinessProvider, useOwnerBusiness } from '@/context/OwnerBusinessContext';
 import { AppShell } from '@/layouts/AppShell';
 import { Loading, StateView, Button } from '@/components/ui';
 import { Wordmark } from '@/components/Wordmark';
+import { destinoInicial, guardarModo } from '@/lib/modo';
+import { C } from '@/lib/theme';
 
 /** Splash mientras se resuelve la sesión. Evita el parpadeo de login. */
 function Splash() {
@@ -75,8 +77,8 @@ export function ClientRoute() {
 }
 
 /**
- * Zona del dueño. Exige tener el modo negocio activado y, además, valida el
- * onboarding: si todavía no tiene ningún local, lo manda a configurarlo.
+ * Zona del dueño. Exige tener el modo negocio activado; si todavía no cargó
+ * ningún local, le ofrece crearlo o entrar a la app como cliente.
  */
 export function OwnerRoute() {
   const { profile } = useAuth();
@@ -112,9 +114,12 @@ function OwnerGate() {
     );
   }
 
-  // Primer ingreso del dueño: onboarding obligatorio.
+  // Sin ningún local todavía no hay panel que mostrar, pero tampoco se lo
+  // empuja a la fuerza: quien se registró tocando "Tengo un negocio" y después
+  // decidió usar la app sólo para reservar quedaba encerrado acá, y en cada
+  // ingreso volvía a la misma pantalla sin salida.
   if (!businesses.length && !isOnboarding) {
-    return <Navigate to="/panel/configurar" replace />;
+    return <SinNegocio />;
   }
 
   // Ya configuró: no tiene sentido volver al onboarding.
@@ -125,7 +130,51 @@ function OwnerGate() {
   return <Outlet />;
 }
 
-/** Redirige la raíz según el rol del usuario ya autenticado. */
+/**
+ * Qué hacer con una cuenta con modo negocio que todavía no cargó ningún local.
+ *
+ * Antes esto era una redirección forzada al alta del negocio. Ahora es una
+ * elección: el que quiere crearlo lo crea, y el que sólo quiere reservar entra
+ * a la app y no vuelve a ver esta pantalla, porque queda anotado el modo.
+ */
+function SinNegocio() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+
+  return (
+    <AppShell>
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          gap: 12,
+          padding: 32,
+        }}
+      >
+        <div style={{ fontSize: 20, fontWeight: 800 }}>Todavía no cargaste tu negocio</div>
+        <div style={{ fontSize: 14, color: C.sub, lineHeight: 1.5, marginBottom: 8 }}>
+          Podés crearlo ahora o dejarlo para después y usar la app para reservar. El
+          panel te espera en tu perfil cuando quieras volver.
+        </div>
+
+        <Button onClick={() => navigate('/panel/configurar')}>Crear mi negocio</Button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            if (profile) guardarModo(profile.id, 'client');
+            navigate('/app', { replace: true });
+          }}
+        >
+          Ahora no, quiero reservar
+        </Button>
+      </div>
+    </AppShell>
+  );
+}
+
+/** Redirige la raíz al modo en el que estaba esta cuenta. */
 export function RoleRedirect() {
   const { session, profile, loading } = useAuth();
 
@@ -133,7 +182,7 @@ export function RoleRedirect() {
   if (!session) return <Navigate to="/bienvenida" replace />;
   if (!profile) return <Splash />;
 
-  return <Navigate to={profile.is_owner ? '/panel' : '/app'} replace />;
+  return <Navigate to={destinoInicial(profile.id, profile.is_owner)} replace />;
 }
 
 /** Pantallas de auth: si ya hay sesión, no tiene sentido mostrarlas. */
@@ -142,7 +191,7 @@ export function PublicOnly() {
 
   if (loading) return <Splash />;
   if (session && profile) {
-    return <Navigate to={profile.is_owner ? '/panel' : '/app'} replace />;
+    return <Navigate to={destinoInicial(profile.id, profile.is_owner)} replace />;
   }
   return <Outlet />;
 }

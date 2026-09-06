@@ -74,9 +74,9 @@ const RUBROS: Record<string, Rubro> = {
     duracion: 90,
     paso: 60,
     capacidad: {
-      titulo: 'Alojamientos por capacidad',
-      ayuda: 'Cuántas habitaciones o cabañas tenés para cada cantidad de personas.',
-      unidad: (n) => `Para ${n} persona${n === 1 ? '' : 's'}`,
+      titulo: 'Tus alojamientos',
+      ayuda: 'Cargá cada tipo de habitación o cabaña con su precio por noche.',
+      unidad: () => 'alojamientos',
     },
   },
 };
@@ -86,10 +86,9 @@ export function rubroDe(slug: string | null | undefined): Rubro {
   return (slug && RUBROS[slug]) || TURNO_SIMPLE(60, 'personas');
 }
 
-/** Los tamaños que se ofrecen por defecto según el rubro. */
+/** Los tamaños de mesa que se ofrecen por defecto. Sólo los usa 'table'. */
 export function tamanosIniciales(tipo: ReservationType): Record<number, number> {
   if (tipo === 'table') return { 2: 4, 4: 3, 6: 1, 8: 0 };
-  if (tipo === 'stay') return { 2: 2, 4: 1, 6: 0 };
   return {};
 }
 
@@ -99,6 +98,41 @@ export const esPorNoches = (tipo: ReservationType) => tipo === 'stay';
 /** ¿Hay que elegir un servicio del catálogo para poder reservar? */
 export const exigeServicio = (tipo: ReservationType) => tipo === 'service';
 
+/**
+ * ¿El local se organiza con alojamientos con nombre y precio?
+ *
+ * Un hospedaje no vende "un lugar para 4": vende la Cabaña del Lago, que
+ * cuesta tanto la noche y tiene su descripción. Por eso sus alojamientos son
+ * items del catálogo y no filas de capacidad anónimas.
+ */
+export const usaAlojamientos = (tipo: ReservationType) => tipo === 'stay';
+
 /** ¿La reserva necesita saber para cuántas personas es? */
 export const usaCantidadDePersonas = (tipo: ReservationType) =>
   tipo === 'table' || tipo === 'stay';
+
+/** Qué vende el catálogo de este rubro. */
+export function catalogoDe(tipo: ReservationType) {
+  if (tipo === 'stay') {
+    return {
+      titulo: 'Alojamientos',
+      singular: 'alojamiento',
+      vacio: 'Cargá tu primera cabaña o habitación.',
+      itemType: 'room' as const,
+    };
+  }
+  if (tipo === 'service' || tipo === 'slot') {
+    return {
+      titulo: 'Servicios',
+      singular: 'servicio',
+      vacio: 'Todavía no cargaste ningún servicio.',
+      itemType: 'service' as const,
+    };
+  }
+  return {
+    titulo: 'Carta de productos',
+    singular: 'producto',
+    vacio: 'Todavía no cargaste nada.',
+    itemType: 'product' as const,
+  };
+}

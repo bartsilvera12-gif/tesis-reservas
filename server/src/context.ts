@@ -209,7 +209,13 @@ async function contextoDueno(
       '',
       `## Negocio: ${corto(n.name, 60)}`,
       `- Categoría: ${cat} · Zona: ${corto(n.neighborhood, 40) || '—'}, ${corto(n.city, 40)}`,
-      `- Estado: ${n.active ? 'activo' : 'inactivo'} · Reservas ${n.reservation_type === 'table' ? 'por mesa' : 'por turno'}`,
+      `- Estado: ${n.active ? 'activo' : 'inactivo'} · Reservas ${
+        n.reservation_type === 'table'
+          ? 'por mesa'
+          : n.reservation_type === 'stay'
+            ? 'por noches, eligiendo alojamiento'
+            : 'por turno'
+      }`,
       `- Duración de cada reserva: ${n.default_slot_duration_minutes} min`,
       n.reservation_type === 'service'
         ? `- Turnos simultáneos: ${n.max_concurrent_reservations}`

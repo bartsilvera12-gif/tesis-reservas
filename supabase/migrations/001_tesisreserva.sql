@@ -397,6 +397,58 @@ create trigger trg_catalog_items_updated_at
   before update on tesisreserva.catalog_items
   for each row execute function tesisreserva.set_updated_at();
 
+-- Un hospedaje no vende "mesas para 4": vende alojamientos con nombre, foto,
+-- descripcion y precio por noche. Antes la capacidad vivia en
+-- business_capacity, que solo guarda (cuantas personas, cuantos hay): dos
+-- cabanas distintas para 4 personas quedaban indistinguibles y el cliente no
+-- podia elegir cual queria ni ver cuanto salia.
+--
+-- Ahora cada tipo de alojamiento es un catalog_item con item_type = 'room':
+--   capacity  cuantas personas entran
+--   units     cuantas unidades iguales tiene (3 cabanas identicas)
+alter table tesisreserva.catalog_items
+  add column if not exists capacity int,
+  add column if not exists units    int not null default 1;
+
+alter table tesisreserva.catalog_items drop constraint if exists catalog_items_type_check;
+alter table tesisreserva.catalog_items
+  add constraint catalog_items_type_check check (item_type in ('product', 'service', 'room'));
+
+alter table tesisreserva.catalog_items drop constraint if exists catalog_items_capacity_check;
+alter table tesisreserva.catalog_items
+  add constraint catalog_items_capacity_check
+  check (capacity is null or capacity between 1 and 50);
+
+alter table tesisreserva.catalog_items drop constraint if exists catalog_items_units_check;
+alter table tesisreserva.catalog_items
+  add constraint catalog_items_units_check check (units >= 0);
+
+-- Los hospedajes que ya tenian capacidad cargada se convierten solos, para que
+-- el duenio abra el panel y encuentre sus alojamientos listos para editar en
+-- vez de una pantalla vacia. Es una sola sentencia a proposito: el `not
+-- exists` se evalua contra la foto previa, asi todas las filas de un mismo
+-- negocio entran juntas y volver a aplicar la migracion no duplica nada.
+insert into tesisreserva.catalog_items
+  (business_id, name, item_type, capacity, units, sort_order)
+select c.business_id,
+       'Alojamiento para ' || c.party_size
+         || case when c.party_size = 1 then ' persona' else ' personas' end,
+       'room', c.party_size, c.quantity, c.party_size
+  from tesisreserva.business_capacity c
+  join tesisreserva.businesses b
+    on b.id = c.business_id and b.reservation_type = 'stay'
+ where c.active and c.quantity > 0
+   and not exists (
+     select 1 from tesisreserva.catalog_items i
+      where i.business_id = c.business_id and i.item_type = 'room');
+
+-- Ya convertidas, esas filas dejan de usarse para hospedajes. Se apagan en vez
+-- de borrarse: si algo salio mal, el dato original sigue estando.
+update tesisreserva.business_capacity c
+   set active = false
+  from tesisreserva.businesses b
+ where b.id = c.business_id and b.reservation_type = 'stay' and c.active;
+
 -- ---------------------------------------------------------------------------
 -- 8. promotions
 -- ---------------------------------------------------------------------------
@@ -1103,42 +1155,54 @@ $$;
 -- ---------------------------------------------------------------------------
 
 /**
- * Cuántos alojamientos de cada tamaño quedan libres entre dos fechas.
+ * Qué alojamientos quedan libres entre dos fechas, con su precio por noche.
  *
  * `get_availability` no sirve acá: devuelve turnos de un día, y un hospedaje
  * se ocupa por un rango completo. Se compara con `daterange`, que trata el
  * intervalo como [entrada, salida): la noche de salida queda libre, así que
  * alguien puede entrar el mismo día que otro se va.
  */
+-- El tipo de retorno cambio (antes devolvia tamanos, ahora alojamientos con
+-- nombre y precio), y eso `create or replace` no lo permite.
+drop function if exists tesisreserva.get_stay_availability(uuid, date, date);
+
 create or replace function tesisreserva.get_stay_availability(
   p_business_id uuid,
   p_check_in    date,
   p_check_out   date
 )
-returns table (party_size int, total int, remaining int)
+returns table (
+  item_id     uuid,
+  name        text,
+  description text,
+  price       numeric,
+  capacity    int,
+  units       int,
+  remaining   int
+)
 language sql
 stable
 security definer
 set search_path = tesisreserva, public
 as $$
-  select c.party_size,
-         c.quantity as total,
+  select i.id, i.name, i.description, i.price, i.capacity, i.units,
          greatest(
-           c.quantity - (
+           i.units - (
              select count(*)::int
                from tesisreserva.reservations r
               where r.business_id = p_business_id
+                and r.catalog_item_id = i.id
                 and r.status in ('pending', 'confirmed')
-                and r.party_size = c.party_size
                 and r.check_out_date is not null
                 and daterange(p_check_in, p_check_out)
                     && daterange(r.reservation_date, r.check_out_date)
-           ), 0) as remaining
-    from tesisreserva.business_capacity c
-   where c.business_id = p_business_id
-     and c.active
+           ), 0)::int as remaining
+    from tesisreserva.catalog_items i
+   where i.business_id = p_business_id
+     and i.item_type = 'room'
+     and i.active
      and p_check_out > p_check_in
-   order by c.party_size;
+   order by i.sort_order, i.price, i.name;
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -1232,19 +1296,29 @@ begin
     if p_check_out <= p_date then
       raise exception 'La salida tiene que ser después de la entrada.' using errcode = '22023';
     end if;
-    if p_party_size is null then
-      raise exception 'Elegí para cuántas personas es.' using errcode = '22023';
+    -- Se reserva un alojamiento concreto, no "un lugar para 4": el cliente
+    -- eligió esa cabaña, con ese precio y esa descripción.
+    if p_catalog_item_id is null then
+      raise exception 'Elegí el alojamiento que querés reservar.' using errcode = '22023';
+    end if;
+    if v_item.item_type <> 'room' then
+      raise exception 'Ese alojamiento ya no está disponible.' using errcode = 'P0002';
+    end if;
+
+    -- Si no aclaran cuántos van, se asume que ocupan el alojamiento completo:
+    -- es lo normal en una cabaña y le ahorra un paso a quien reserva.
+    p_party_size := coalesce(p_party_size, v_item.capacity, 1);
+
+    if v_item.capacity is not null and p_party_size > v_item.capacity then
+      raise exception 'En % entran hasta % personas.', v_item.name, v_item.capacity
+        using errcode = '23514';
     end if;
 
     perform pg_advisory_xact_lock(hashtext(p_business_id::text || '|stay'));
 
-    select coalesce(c.quantity, 0) into v_capacity
-      from tesisreserva.business_capacity c
-     where c.business_id = p_business_id and c.party_size = p_party_size and c.active;
-    v_capacity := coalesce(v_capacity, 0);
-
+    v_capacity := coalesce(v_item.units, 0);
     if v_capacity <= 0 then
-      raise exception 'No hay alojamientos para % personas.', p_party_size using errcode = '23514';
+      raise exception 'No quedan unidades de %.', v_item.name using errcode = '23514';
     end if;
 
     -- Se ocupa [entrada, salida): la noche de salida queda libre, por eso
@@ -1252,8 +1326,8 @@ begin
     select count(*)::int into v_used
       from tesisreserva.reservations r
      where r.business_id = p_business_id
+       and r.catalog_item_id = p_catalog_item_id
        and r.status in ('pending', 'confirmed')
-       and r.party_size = p_party_size
        and r.check_out_date is not null
        and daterange(p_date, p_check_out) && daterange(r.reservation_date, r.check_out_date);
 
@@ -1292,7 +1366,8 @@ begin
     insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
     values (
       v_biz.owner_id, 'Nueva reserva',
-      'Estadía del ' || to_char(p_date, 'DD/MM') || ' al ' || to_char(p_check_out, 'DD/MM') || '.',
+      coalesce(v_item.name || ': ', '') || 'del ' || to_char(p_date, 'DD/MM')
+        || ' al ' || to_char(p_check_out, 'DD/MM') || '.',
       'reservation_created', v_res.id
     );
 

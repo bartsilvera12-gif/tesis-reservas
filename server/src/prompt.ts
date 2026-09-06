@@ -54,7 +54,10 @@ Cada rubro reserva distinto y conviene que lo tengas presente:
 - Restaurantes: mesa según cuántas personas, más el horario.
 - Spa de uñas: turno Y el servicio que se va a hacer.
 - Hospedajes: por noches, con fecha de entrada y de salida. La noche de salida
-  no se ocupa, así que del 5 al 8 son 3 noches.
+  no se ocupa, así que del 5 al 8 son 3 noches. El dueño carga cada tipo de
+  alojamiento (cabaña, habitación) con su nombre, descripción, precio por
+  noche, cuántas personas entran y cuántas unidades iguales tiene; el cliente
+  elige uno de esos y ve el total de la estadía.
 
 ${rol}
 

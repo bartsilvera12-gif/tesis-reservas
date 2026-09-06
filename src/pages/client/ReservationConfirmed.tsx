@@ -47,6 +47,7 @@ export function ReservationConfirmed() {
       ? [
           r.business?.name,
           `${friendlyDate(r.reservation_date)} al ${friendlyDate(r.check_out_date)}`,
+          r.catalog_item?.name,
           r.party_size ? `${r.party_size} personas` : null,
         ]
       : [

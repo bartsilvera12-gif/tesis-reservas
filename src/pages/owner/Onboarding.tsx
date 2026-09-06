@@ -5,14 +5,17 @@ import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
 import { useAsync } from '@/hooks/useAsync';
 import {
   createBusiness,
+  createCatalogCategory,
+  createCatalogItem,
   ensureBusinessHours,
   fetchCategories,
   setCapacity,
   updateBusiness,
 } from '@/services/businesses';
 import { uploadBusinessImage } from '@/services/storage';
-import { Button, Field, Loading, Spinner } from '@/components/ui';
+import { Button, Field, Loading, Spinner, Stepper } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
+import { guardarModo } from '@/lib/modo';
 import { dayShort, slugify } from '@/lib/format';
 import { rubroDe, tamanosIniciales } from '@/lib/rubros';
 import { ErrorImagen, LADO_LOGO, LADO_PORTADA, prepararImagen } from '@/lib/image';
@@ -72,6 +75,14 @@ export function OwnerOnboarding() {
   const [maxConcurrent, setMaxConcurrent] = useState(2);
   const [tables, setTables] = useState<Record<number, number>>({ 2: 4, 4: 3, 6: 1, 8: 0 });
 
+  // Un hospedaje arranca cargando su primer alojamiento. Podría dejarse para
+  // después, pero el negocio quedaría publicado sin poder recibir una sola
+  // reserva; el resto se agrega desde el panel.
+  const [aloName, setAloName] = useState('');
+  const [aloPersonas, setAloPersonas] = useState(2);
+  const [aloUnidades, setAloUnidades] = useState(1);
+  const [aloPrecio, setAloPrecio] = useState('');
+
   const categoriesQuery = useAsync(() => fetchCategories(), []);
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
 
@@ -99,14 +110,20 @@ export function OwnerOnboarding() {
   async function onFinish() {
     setError(null);
 
-    if (reservationType === 'table' || reservationType === 'stay') {
+    if (reservationType === 'table') {
       const total = Object.values(tables).reduce((a, b) => a + b, 0);
       if (total === 0) {
-        setError(
-          reservationType === 'stay'
-            ? 'Configurá al menos un alojamiento para poder recibir reservas.'
-            : 'Configurá al menos una mesa para poder recibir reservas.',
-        );
+        setError('Configurá al menos una mesa para poder recibir reservas.');
+        return;
+      }
+    }
+    if (reservationType === 'stay') {
+      if (!aloName.trim()) {
+        setError('Poné el nombre de tu primer alojamiento.');
+        return;
+      }
+      if (aloUnidades < 1) {
+        setError('Tenés que tener al menos una unidad de ese alojamiento.');
         return;
       }
     }
@@ -153,10 +170,24 @@ export function OwnerOnboarding() {
         closesAt,
       });
 
-      if (reservationType === 'table' || reservationType === 'stay') {
+      if (reservationType === 'table') {
         for (const [size, quantity] of Object.entries(tables)) {
           if (quantity > 0) await setCapacity(business.id, Number(size), quantity);
         }
+      }
+
+      if (reservationType === 'stay') {
+        const categoria = await createCatalogCategory(business.id, 'Alojamientos');
+        await createCatalogItem({
+          business_id: business.id,
+          category_id: categoria.id,
+          name: aloName.trim(),
+          item_type: 'room',
+          price: Number(String(aloPrecio).replace(/\D/g, '')) || 0,
+          capacity: aloPersonas,
+          units: aloUnidades,
+          sort_order: aloPersonas,
+        });
       }
 
       // Las imágenes van después: la política de Storage exige que el
@@ -175,6 +206,7 @@ export function OwnerOnboarding() {
       if (Object.keys(patch).length) await updateBusiness(business.id, patch);
 
       await reload();
+      guardarModo(profile!.id, 'owner');
       navigate('/panel', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No pudimos crear tu negocio.');
@@ -408,7 +440,72 @@ export function OwnerOnboarding() {
               </div>
             </div>
 
-            {reservationType === 'table' || reservationType === 'stay' ? (
+            {reservationType === 'stay' ? (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+                  Tu primer alojamiento
+                </div>
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 10, lineHeight: 1.45 }}>
+                  Los demás los cargás después desde el panel. Si tenés tres cabañas
+                  iguales, es un solo alojamiento con tres unidades.
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <Field
+                    label="Nombre"
+                    placeholder="Cabaña familiar"
+                    value={aloName}
+                    onChange={(e) => setAloName(e.target.value)}
+                  />
+                  <Field
+                    label="Precio por noche (₲)"
+                    hint="Dejalo vacío si preferís no publicarlo."
+                    inputMode="numeric"
+                    value={aloPrecio}
+                    onChange={(e) => setAloPrecio(e.target.value)}
+                  />
+
+                  <div
+                    style={{
+                      background: C.surface,
+                      border: `1px solid ${C.line}`,
+                      borderRadius: 14,
+                      padding: '4px 16px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '10px 0',
+                      }}
+                    >
+                      <span style={{ fontSize: 13.5, fontWeight: 600 }}>
+                        ¿Cuántas personas entran?
+                      </span>
+                      <Stepper value={aloPersonas} min={1} max={50} onChange={setAloPersonas} />
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '10px 0',
+                        borderTop: `1px solid ${C.lineSoft}`,
+                      }}
+                    >
+                      <span style={{ fontSize: 13.5, fontWeight: 600 }}>
+                        ¿Cuántos iguales tenés?
+                      </span>
+                      <Stepper value={aloUnidades} min={1} max={99} onChange={setAloUnidades} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : reservationType === 'table' ? (
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
                   {rubro.capacidad.titulo}
@@ -505,6 +602,26 @@ export function OwnerOnboarding() {
             </Button>
           )}
         </div>
+
+        {/* Una salida siempre a la vista. Quien tocó "Tengo un negocio" al
+            registrarse y en realidad sólo quiere reservar quedaba encerrado
+            acá, y volvía a esta misma pantalla en cada ingreso. */}
+        <button
+          onClick={() => {
+            if (profile) guardarModo(profile.id, 'client');
+            navigate('/app', { replace: true });
+          }}
+          style={{
+            width: '100%',
+            marginTop: 14,
+            minHeight: 44,
+            fontSize: 13,
+            fontWeight: 600,
+            color: C.sub,
+          }}
+        >
+          Lo hago después, quiero reservar
+        </button>
       </div>
     </div>
   );

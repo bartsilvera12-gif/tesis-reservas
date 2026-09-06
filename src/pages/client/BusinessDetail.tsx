@@ -15,6 +15,7 @@ import {
   shortTime,
   timeAgo,
 } from '@/lib/format';
+import { catalogoDe, esPorNoches } from '@/lib/rubros';
 import { ICONS } from '@/components/BottomNav';
 import type { BusinessHour, CatalogItem } from '@/types/db';
 
@@ -202,9 +203,7 @@ export function BusinessDetail() {
           }}
         >
           <button onClick={() => setTab('carta')} style={tabStyle(tab === 'carta')}>
-            {business.reservation_type === 'service' || business.reservation_type === 'slot'
-              ? 'Servicios'
-              : 'Carta'}
+            {catalogoDe(business.reservation_type).titulo}
           </button>
           <button onClick={() => setTab('resenas')} style={tabStyle(tab === 'resenas')}>
             Reseñas
@@ -215,7 +214,11 @@ export function BusinessDetail() {
         </div>
 
         {tab === 'carta' && (
-          <CatalogTab items={catalog} loading={bizQuery.loading} />
+          <CatalogTab
+            items={catalog}
+            loading={bizQuery.loading}
+            porNoches={esPorNoches(business.reservation_type)}
+          />
         )}
 
         {tab === 'resenas' && (
@@ -366,7 +369,15 @@ export function BusinessDetail() {
   );
 }
 
-function CatalogTab({ items, loading }: { items: CatalogItem[]; loading: boolean }) {
+function CatalogTab({
+  items,
+  loading,
+  porNoches,
+}: {
+  items: CatalogItem[];
+  loading: boolean;
+  porNoches: boolean;
+}) {
   if (loading && !items.length) return <Loading label="" />;
 
   if (!items.length) {
@@ -379,7 +390,9 @@ function CatalogTab({ items, loading }: { items: CatalogItem[]; loading: boolean
           padding: '28px 0',
         }}
       >
-        Este negocio todavía no cargó su carta.
+        {porNoches
+          ? 'Este hospedaje todavía no cargó sus alojamientos.'
+          : 'Este negocio todavía no cargó su carta.'}
       </div>
     );
   }
@@ -400,25 +413,39 @@ function CatalogTab({ items, loading }: { items: CatalogItem[]; loading: boolean
         >
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 14.5, fontWeight: 600 }}>{item.name}</div>
+            {item.description && (
+              <div style={{ fontSize: 12.5, color: C.sub, marginTop: 3, lineHeight: 1.45 }}>
+                {item.description}
+              </div>
+            )}
             <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
               {[
-                item.category?.name,
+                // En un alojamiento importa cuánta gente entra; en un plato o
+                // un servicio, cuánto dura.
+                item.capacity ? `Hasta ${item.capacity} personas` : null,
                 item.duration_minutes ? `${item.duration_minutes} min` : null,
+                item.capacity ? null : item.category?.name,
               ]
                 .filter(Boolean)
                 .join(' · ')}
             </div>
           </div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: C.terracottaDark,
-              flexShrink: 0,
-            }}
-          >
-            {money(item.price)}
-          </div>
+          {item.price > 0 && (
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: C.terracottaDark,
+                flexShrink: 0,
+                textAlign: 'right',
+              }}
+            >
+              {money(item.price)}
+              {porNoches && (
+                <div style={{ fontSize: 10.5, fontWeight: 600, color: C.sub }}>por noche</div>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>

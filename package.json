@@ -20,7 +20,8 @@
     "android:icons": "node scripts/gen-icons.mjs",
     "db:test:owner": "node scripts/test-owner.mjs",
     "auth:probar-correo": "node scripts/probar-correo.mjs",
-    "test:recordatorios": "node scripts/test-recordatorios.mjs"
+    "test:recordatorios": "node scripts/test-recordatorios.mjs",
+    "test:modo": "node scripts/test-modo.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",
