@@ -889,6 +889,46 @@ try {
     const stats = await c.query(
       `select (tesisreserva.business_stats($1)->>'today_count') as x`, [idSegundo]);
     ok('cada local tiene sus propias estadisticas', stats.rows.length === 1);
+
+    // ── Lo que espera en CADA local, sin entrar uno por uno ───────────────
+    // Es el dato que faltaba: el panel muestra un negocio por vez, asi que una
+    // reserva que entra en el segundo era invisible desde el primero.
+    const resumen = await c.query(`select * from tesisreserva.pending_by_business()`);
+    const porId = Object.fromEntries(resumen.rows.map((r) => [r.business_id, r]));
+    ok('el resumen trae los dos locales', resumen.rows.length === 2,
+       `(vinieron ${resumen.rows.length})`);
+    ok('cuenta las pendientes del primero', porId[idPrimero]?.pending === 1,
+       `(${porId[idPrimero]?.pending})`);
+    ok('y las del segundo por separado', porId[idSegundo]?.pending === 1,
+       `(${porId[idSegundo]?.pending})`);
+
+    // Confirmar una deja de contarla: lo pendiente es lo que espera respuesta.
+    await c.query(
+      `update tesisreserva.reservations set status='confirmed'
+        where business_id=$1 and status='pending'`, [idPrimero]);
+    const tras = await c.query(`select * from tesisreserva.pending_by_business()`);
+    const trasId = Object.fromEntries(tras.rows.map((r) => [r.business_id, r]));
+    ok('al confirmar deja de estar pendiente', trasId[idPrimero]?.pending === 0,
+       `(${trasId[idPrimero]?.pending})`);
+    ok('y no toca la cuenta del otro local', trasId[idSegundo]?.pending === 1,
+       `(${trasId[idSegundo]?.pending})`);
+
+    // Nadie ve los pendientes de otro.
+    await asUser(intruso);
+    const ajeno = await c.query(`select * from tesisreserva.pending_by_business()`);
+    ok('otro dueno no ve los pendientes ajenos',
+       !ajeno.rows.some((r) => r.business_id === idPrimero || r.business_id === idSegundo),
+       `(${ajeno.rows.length} filas)`);
+
+    // ── La notificacion dice de QUE local es ──────────────────────────────
+    await asAdmin();
+    const aviso = await c.query(
+      `select title from tesisreserva.notifications
+        where user_id=$1 and type='reservation_created'
+        order by created_at desc limit 1`, [cliente]);
+    ok('la notificacion al dueno nombra el local',
+       aviso.rows[0]?.title?.includes('Lo de Karen'),
+       `("${aviso.rows[0]?.title}")`);
   }
 
   await asAdmin();

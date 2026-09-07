@@ -1365,7 +1365,7 @@ begin
 
     insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
     values (
-      v_biz.owner_id, 'Nueva reserva',
+      v_biz.owner_id, 'Nueva reserva · ' || v_biz.name,
       coalesce(v_item.name || ': ', '') || 'del ' || to_char(p_date, 'DD/MM')
         || ' al ' || to_char(p_check_out, 'DD/MM') || '.',
       'reservation_created', v_res.id
@@ -1474,10 +1474,13 @@ begin
   end if;
 
   -- Notificación para el dueño
+  -- El nombre del local va en el título. Con más de un negocio, "Nueva
+  -- reserva para el 12/09 a las 20:00" no dice a cuál llegó, y el dueño tiene
+  -- que abrir la app y adivinar en cuál mirar.
   insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
   values (
     v_biz.owner_id,
-    'Nueva reserva',
+    'Nueva reserva · ' || v_biz.name,
     'Tenés una nueva reserva para el ' || to_char(p_date, 'DD/MM') || ' a las ' || to_char(p_time, 'HH24:MI') || '.',
     'reservation_created',
     v_res.id
@@ -1709,6 +1712,37 @@ $$;
 -- ---------------------------------------------------------------------------
 --  Estadísticas del dashboard del dueño (calculadas, nada duplicado)
 -- ---------------------------------------------------------------------------
+/**
+ * Qué está esperando en cada uno de tus negocios.
+ *
+ * El panel trabaja sobre un negocio por vez, así que una reserva que entra en
+ * el segundo local es invisible mientras mirás el primero. Con esto el panel
+ * puede avisar "tenés 2 pendientes en Lupe Café" sin que haya que ir a
+ * buscarlas local por local.
+ *
+ * Una sola consulta para todos: pedir las estadísticas de cada negocio por
+ * separado son N viajes a un servidor que está a ~100 ms, y son justo los
+ * datos de la primera pantalla.
+ */
+create or replace function tesisreserva.pending_by_business()
+returns table (business_id uuid, pending int, today int)
+language sql
+stable
+security definer
+set search_path = tesisreserva, public
+as $$
+  select b.id,
+         count(*) filter (where r.status = 'pending')::int,
+         count(*) filter (
+           where r.status in ('pending', 'confirmed')
+             and r.reservation_date = tesisreserva.hoy()
+         )::int
+    from tesisreserva.businesses b
+    left join tesisreserva.reservations r on r.business_id = b.id
+   where b.owner_id = auth.uid()
+   group by b.id;
+$$;
+
 create or replace function tesisreserva.business_stats(p_business_id uuid)
 returns jsonb
 language plpgsql
@@ -1948,6 +1982,7 @@ grant execute on function tesisreserva.set_reservation_status(uuid, text, text) 
 grant execute on function tesisreserva.reply_to_review(uuid, text)                              to authenticated;
 grant execute on function tesisreserva.become_owner()                                          to authenticated;
 grant execute on function tesisreserva.business_stats(uuid)                                     to authenticated;
+grant execute on function tesisreserva.pending_by_business()                                    to authenticated;
 grant execute on function tesisreserva.get_stay_availability(uuid, date, date)                  to anon, authenticated;
 grant execute on function tesisreserva.recommended_businesses(int)                              to authenticated;
 

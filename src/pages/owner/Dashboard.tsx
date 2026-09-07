@@ -1,17 +1,47 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
 import { useAsync } from '@/hooks/useAsync';
 import { buildInsights, fetchBusinessStats } from '@/services/stats';
-import { fetchBusinessReservations } from '@/services/reservations';
-import { Loading, StateView, StatusChip } from '@/components/ui';
+import { fetchBusinessReservations, fetchPendingByBusiness } from '@/services/reservations';
+import { Loading, Sheet, StateView, StatusChip } from '@/components/ui';
 import { C } from '@/lib/theme';
 import { dayShort, shortTime, todayISO } from '@/lib/format';
 import { ICONS } from '@/components/BottomNav';
+import type { BusinessWithMeta } from '@/types/db';
 
 export function OwnerDashboard() {
   const { active, businesses, setActiveId } = useOwnerBusiness();
   const navigate = useNavigate();
+  const [eligiendo, setEligiendo] = useState(false);
+
+  /**
+   * Qué está esperando en CADA local, no sólo en el que estás mirando.
+   *
+   * El panel trabaja sobre un negocio por vez, así que una reserva que entra
+   * en el segundo local era invisible hasta que se te ocurriera ir a mirarlo.
+   * Se pide una sola vez para todos.
+   */
+  const pendientesQuery = useAsync(
+    () => fetchPendingByBusiness(),
+    [businesses.length],
+    { enabled: businesses.length > 1 },
+  );
+
+  const pendientesPorId = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const p of pendientesQuery.data ?? []) mapa.set(p.business_id, p.pending);
+    return mapa;
+  }, [pendientesQuery.data]);
+
+  // Lo que espera en los OTROS locales. Es el dato que no tenías forma de ver.
+  const enOtros = useMemo(
+    () =>
+      businesses
+        .filter((b) => b.id !== active?.id && (pendientesPorId.get(b.id) ?? 0) > 0)
+        .map((b) => ({ negocio: b, pendientes: pendientesPorId.get(b.id) ?? 0 })),
+    [businesses, active?.id, pendientesPorId],
+  );
 
   const statsQuery = useAsync(
     () => fetchBusinessStats(active!.id),
@@ -53,27 +83,40 @@ export function OwnerDashboard() {
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, color: C.sub }}>Tu negocio</div>
+          <div style={{ fontSize: 13, color: C.sub }}>
+            {businesses.length > 1 ? `Tus negocios (${businesses.length})` : 'Tu negocio'}
+          </div>
+          {/* Antes era un <select> nativo: mostraba los nombres y nada más.
+              Ahora abre una hoja donde cada local dice qué tiene esperando,
+              que es lo que uno necesita para decidir a cuál entrar. */}
           {businesses.length > 1 ? (
-            <select
-              value={active.id}
-              onChange={(e) => setActiveId(e.target.value)}
+            <button
+              onClick={() => setEligiendo(true)}
               style={{
-                fontSize: 20,
-                fontWeight: 800,
-                border: 'none',
-                background: 'transparent',
-                padding: '8px 0',
-                minHeight: 44,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
                 maxWidth: '100%',
+                minHeight: 44,
+                padding: '4px 0',
+                textAlign: 'left',
               }}
             >
-              {businesses.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
+              <span
+                style={{
+                  fontSize: 20,
+                  fontWeight: 800,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {active.name}
+              </span>
+              <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden style={{ flexShrink: 0 }}>
+                <path d="M7 10l5 5 5-5z" fill={C.muted} />
+              </svg>
+            </button>
           ) : (
             <div
               style={{
@@ -116,6 +159,56 @@ export function OwnerDashboard() {
           )}
         </div>
       </div>
+
+      {/* Lo que llegó a los otros locales. Sin esto, con dos negocios había
+          que entrar a cada uno para enterarse. */}
+      {enOtros.length > 0 && (
+        <div style={{ padding: '12px 20px 0' }}>
+          {enOtros.map(({ negocio, pendientes }) => (
+            <button
+              key={negocio.id}
+              onClick={() => setActiveId(negocio.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                textAlign: 'left',
+                minHeight: 48,
+                padding: '10px 14px',
+                marginBottom: 8,
+                borderRadius: 12,
+                background: C.warnBg,
+                border: `1px solid ${C.warnLine}`,
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  flexShrink: 0,
+                  minWidth: 22,
+                  height: 22,
+                  padding: '0 6px',
+                  borderRadius: 999,
+                  background: C.terracotta,
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {pendientes}
+              </span>
+              <span style={{ fontSize: 13, color: C.warn, fontWeight: 600, minWidth: 0 }}>
+                {pendientes === 1 ? 'Reserva sin responder' : 'Reservas sin responder'} en{' '}
+                <strong>{negocio.name}</strong>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {statsQuery.loading && !stats ? (
         <Loading label="Calculando…" />
@@ -361,6 +454,22 @@ export function OwnerDashboard() {
           ))}
         </div>
       )}
+
+      <SelectorDeNegocio
+        open={eligiendo}
+        onClose={() => setEligiendo(false)}
+        negocios={businesses}
+        activoId={active.id}
+        pendientesPorId={pendientesPorId}
+        onElegir={(id) => {
+          setActiveId(id);
+          setEligiendo(false);
+        }}
+        onAgregar={() => {
+          setEligiendo(false);
+          navigate('/panel/configurar');
+        }}
+      />
     </div>
   );
 }
@@ -399,5 +508,138 @@ function Metric({
       </div>
       <div style={{ fontSize: 11, color: C.sub, marginTop: 1 }}>{label}</div>
     </div>
+  );
+}
+
+/**
+ * Cambiar de negocio, sabiendo qué espera en cada uno.
+ *
+ * Antes era un `<select>` nativo con los nombres y nada más. El dato que hace
+ * falta para elegir a cuál entrar no es el nombre: es cuántas reservas están
+ * esperando respuesta ahí.
+ */
+export function SelectorDeNegocio({
+  open,
+  onClose,
+  negocios,
+  activoId,
+  pendientesPorId,
+  onElegir,
+  onAgregar,
+}: {
+  open: boolean;
+  onClose: () => void;
+  negocios: BusinessWithMeta[];
+  activoId: string;
+  pendientesPorId: Map<string, number>;
+  onElegir: (id: string) => void;
+  onAgregar: () => void;
+}) {
+  return (
+        <Sheet open={open} title="Tus negocios" onClose={onClose}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {negocios.map((b) => {
+              const pendientes = pendientesPorId.get(b.id) ?? 0;
+              const on = b.id === activoId;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => onElegir(b.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    width: '100%',
+                    textAlign: 'left',
+                    minHeight: 58,
+                    padding: '10px 14px',
+                    borderRadius: 12,
+                    background: on ? C.cream : C.surface,
+                    border: `1.5px solid ${on ? C.terracotta : C.line}`,
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 34,
+                      height: 34,
+                      flexShrink: 0,
+                      borderRadius: 10,
+                      background: b.logo_url ? `url(${b.logo_url}) center/cover` : C.bgDeep,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {!b.logo_url && (
+                      <svg width="17" height="17" viewBox="0 0 24 24">
+                        <path d={ICONS.store} fill={C.muted} />
+                      </svg>
+                    )}
+                  </span>
+
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: 'block',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {b.name}
+                    </span>
+                    <span style={{ display: 'block', fontSize: 11.5, color: C.sub, marginTop: 1 }}>
+                      {[b.category?.name, b.neighborhood].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+
+                  {pendientes > 0 && (
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        minWidth: 22,
+                        height: 22,
+                        padding: '0 6px',
+                        borderRadius: 999,
+                        background: C.terracotta,
+                        color: '#fff',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {pendientes}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            <button
+              onClick={onAgregar}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: '100%',
+                minHeight: 48,
+                marginTop: 4,
+                borderRadius: 12,
+                border: `1px dashed ${C.line}`,
+                fontSize: 13.5,
+                fontWeight: 700,
+                color: C.terracottaDark,
+              }}
+            >
+              + Agregar otro negocio
+            </button>
+          </div>
+        </Sheet>
   );
 }

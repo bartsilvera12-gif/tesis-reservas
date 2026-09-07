@@ -69,8 +69,14 @@ function textoCliente(r: ReservationWithRelations, minutos: number) {
 
 function textoDueno(r: ReservationWithRelations, minutos: number) {
   const quien = r.client?.full_name ?? 'Un cliente';
+  const donde = r.business?.name;
   return {
-    title: minutos >= 60 ? 'Reserva en una hora' : `Reserva en ${minutos} minutos`,
+    // El local va en el título aunque tengas uno solo: con dos, "Reserva en 30
+    // minutos" no dice a cuál ir; y con uno, distingue una reserva DE tu local
+    // de una que hiciste vos en otro lado, que con la cuenta doble se mezclan.
+    title:
+      (minutos >= 60 ? 'Reserva en una hora' : `Reserva en ${minutos} minutos`) +
+      (donde ? ` · ${donde}` : ''),
     body: `${quien} · ${r.reservation_time.slice(0, 5)} h${
       r.party_size ? ` · ${r.party_size} personas` : ''
     }`,

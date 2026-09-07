@@ -65,6 +65,7 @@ export function MyBusiness() {
           </>
         )}
         <DepositCard onSaved={reload} toast={toast} />
+        <VisibilidadCard onSaved={reload} toast={toast} />
         <OtroNegocio />
         <AccountCard />
       </div>
@@ -188,7 +189,11 @@ function IdentityCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast:
           ) : null}
         </div>
 
-        <div style={{ marginTop: 22, minWidth: 0 }}>
+        {/* Tiene que despejar el borde de la portada: la fila arranca 34px
+            más arriba para que el logo la pise, y con menos margen el nombre
+            quedaba encima de la foto, en tinta oscura sobre una imagen
+            oscura. */}
+        <div style={{ marginTop: 40, minWidth: 0 }}>
           <div
             style={{
               fontSize: 17,
@@ -1206,6 +1211,90 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
         </div>
       )}
     </Seccion>
+  );
+}
+
+/* ─────────────────────  Visibilidad  ───────────────────── */
+
+/**
+ * Sacar el negocio de circulación sin perderlo.
+ *
+ * No hay "eliminar" a propósito: borrar el local se llevaría por delante las
+ * reservas y las reseñas de los clientes, que son datos de ELLOS y además el
+ * historial que respalda cualquier reclamo. Pausar hace lo que uno realmente
+ * quiere el 99% de las veces — cerrar por vacaciones, por refacción, o dejar
+ * de recibir gente un tiempo — y se puede volver atrás.
+ */
+function VisibilidadCard({
+  onSaved,
+  toast,
+}: {
+  onSaved: () => Promise<void>;
+  toast: Toast;
+}) {
+  const { active } = useOwnerBusiness();
+  const { confirm, node: confirmNode } = useConfirm();
+  const [busy, setBusy] = useState(false);
+
+  if (!active) return null;
+
+  async function cambiar(visible: boolean) {
+    if (!visible) {
+      const { ok } = await confirm({
+        title: '¿Pausar el negocio?',
+        message:
+          'Deja de aparecer en las búsquedas y no vas a recibir reservas nuevas. Las que ya tenés siguen igual, y lo podés reactivar cuando quieras.',
+        confirmLabel: 'Pausar',
+      });
+      if (!ok) return;
+    }
+
+    setBusy(true);
+    try {
+      await updateBusiness(active!.id, { active: visible });
+      await onSaved();
+      toast.success(visible ? 'Tu negocio vuelve a estar visible.' : 'Negocio pausado.');
+    } catch (err) {
+      toast.fail(err instanceof Error ? err.message : 'No pudimos guardar el cambio.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Seccion
+        titulo="Visibilidad"
+        alerta={!active.active}
+        resumen={
+          active.active
+            ? 'Visible: puede recibir reservas'
+            : 'Pausado: no aparece en las búsquedas'
+        }
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800 }}>Visible para los clientes</div>
+            <div style={{ fontSize: 12, color: C.sub, marginTop: 2, lineHeight: 1.45 }}>
+              Pausado seguís entrando al panel y viendo todo, pero nadie puede reservar.
+            </div>
+          </div>
+          <Switch
+            checked={active.active}
+            disabled={busy}
+            onChange={(next) => void cambiar(next)}
+          />
+        </div>
+
+        <div style={{ fontSize: 11.5, color: C.sub, marginTop: 12, lineHeight: 1.5 }}>
+          No hay opción de eliminar el negocio: se llevaría las reservas y las reseñas
+          de tus clientes, que son el respaldo de lo que pasó. Si necesitás borrarlo de
+          verdad, escribinos.
+        </div>
+      </Seccion>
+
+      {confirmNode}
+    </>
   );
 }
 

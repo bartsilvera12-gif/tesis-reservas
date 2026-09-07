@@ -113,6 +113,8 @@ const alCliente = calcularAvisos([lejana], 'client', ahora)[0];
 const alDueno = calcularAvisos([lejana], 'owner', ahora)[0];
 ok('al cliente le habla de dónde reservó', alCliente.body.includes('La Cabaña'), `(${alCliente.body})`);
 ok('al dueño le dice quién viene', alDueno.body.includes('Marta González'), `(${alDueno.body})`);
+// Con dos locales, "Reserva en 30 minutos" no dice a cuál hay que ir.
+ok('y de qué local es', alDueno.title.includes('La Cabaña'), `(${alDueno.title})`);
 ok('los títulos son distintos', alCliente.title !== alDueno.title);
 console.log(`    cliente: "${alCliente.title}" · ${alCliente.body}`);
 console.log(`    dueño  : "${alDueno.title}" · ${alDueno.body}`);

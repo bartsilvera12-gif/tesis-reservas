@@ -178,3 +178,22 @@ export async function fetchUpcomingForReminders(): Promise<ReservationWithRelati
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar tus reservas.'));
   return (data ?? []) as ReservationWithRelations[];
 }
+
+/** Lo que está esperando en cada uno de tus negocios. */
+export interface PendientesPorNegocio {
+  business_id: string;
+  pending: number;
+  today: number;
+}
+
+/**
+ * Cuántas reservas esperan en cada local tuyo.
+ *
+ * El panel muestra un negocio por vez, así que sin esto una reserva que entra
+ * en el segundo local no existe hasta que se te ocurra ir a mirarlo.
+ */
+export async function fetchPendingByBusiness(): Promise<PendientesPorNegocio[]> {
+  const { data, error } = await supabase.rpc('pending_by_business');
+  if (error) throw new Error(friendlyError(error, 'No pudimos ver tus pendientes.'));
+  return (data ?? []) as PendientesPorNegocio[];
+}
