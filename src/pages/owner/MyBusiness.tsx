@@ -65,6 +65,7 @@ export function MyBusiness() {
           </>
         )}
         <DepositCard onSaved={reload} toast={toast} />
+        <OtroNegocio />
         <AccountCard />
       </div>
 
@@ -1205,6 +1206,69 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
         </div>
       )}
     </Seccion>
+  );
+}
+
+/* ─────────────────────  Otro negocio  ───────────────────── */
+
+/**
+ * Sumar un segundo local.
+ *
+ * La app siempre supo manejar varios — el panel tiene selector y cada local
+ * lleva sus propias reservas, su carta y su seña — pero no había por dónde
+ * cargar el segundo: el alta rebotaba a quien ya tenía uno. Va acá y no en el
+ * inicio porque es una acción de configuración, no algo del día a día.
+ */
+function OtroNegocio() {
+  const { businesses } = useOwnerBusiness();
+  const navigate = useNavigate();
+
+  return (
+    <button
+      onClick={() => navigate('/panel/configurar')}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        width: '100%',
+        textAlign: 'left',
+        minHeight: 56,
+        padding: '12px 16px',
+        borderRadius: 14,
+        border: `1px dashed ${C.line}`,
+        background: C.surface,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 30,
+          height: 30,
+          flexShrink: 0,
+          borderRadius: 9,
+          background: C.cream,
+          color: C.terracottaDark,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 19,
+          fontWeight: 700,
+          lineHeight: 1,
+        }}
+      >
+        +
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800 }}>
+          Agregar otro negocio
+        </span>
+        <span style={{ display: 'block', fontSize: 12, color: C.sub, marginTop: 2 }}>
+          {businesses.length === 1
+            ? 'Con la misma cuenta, aparte de este.'
+            : `Ya tenés ${businesses.length}. Cambiás entre ellos desde Inicio.`}
+        </span>
+      </span>
+    </button>
   );
 }
 

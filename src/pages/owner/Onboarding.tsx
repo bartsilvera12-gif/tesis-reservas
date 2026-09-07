@@ -43,7 +43,11 @@ const STEPS = ['Tu negocio', 'Ubicación', 'Reservas'] as const;
 
 export function OwnerOnboarding() {
   const { profile } = useAuth();
-  const { reload } = useOwnerBusiness();
+  const { businesses, reload, setActiveId } = useOwnerBusiness();
+
+  // Cargar el primer local y sumar el cuarto no son la misma situación: la
+  // pantalla dice otra cosa y la salida lleva a otro lado.
+  const esElPrimero = businesses.length === 0;
   const navigate = useNavigate();
 
   const [step, setStep] = useState(0);
@@ -206,6 +210,9 @@ export function OwnerOnboarding() {
       if (Object.keys(patch).length) await updateBusiness(business.id, patch);
 
       await reload();
+      // El panel abre en el negocio recién creado: es el que se vino a
+      // configurar, y si no, quedaría mirando el anterior sin entender por qué.
+      setActiveId(business.id);
       guardarModo(profile!.id, 'owner');
       navigate('/panel', { replace: true });
     } catch (err) {
@@ -221,9 +228,13 @@ export function OwnerOnboarding() {
   return (
     <div style={{ paddingBottom: 32 }}>
       <div style={{ padding: '22px 20px 6px' }}>
-        <div style={{ fontFamily: FONT.display, fontSize: 27 }}>Configurá tu negocio</div>
+        <div style={{ fontFamily: FONT.display, fontSize: 27 }}>
+          {esElPrimero ? 'Configurá tu negocio' : 'Agregá otro negocio'}
+        </div>
         <div style={{ fontSize: 13.5, color: C.sub, marginTop: 5, lineHeight: 1.5 }}>
-          Sólo una vez. Después podés cambiar todo desde “Negocio”.
+          {esElPrimero
+            ? 'Después podés cambiar todo desde “Negocio”.'
+            : 'Va a quedar aparte, con sus propios horarios, precios y reservas.'}
         </div>
 
         {/* Progreso */}
@@ -608,8 +619,12 @@ export function OwnerOnboarding() {
             acá, y volvía a esta misma pantalla en cada ingreso. */}
         <button
           onClick={() => {
-            if (profile) guardarModo(profile.id, 'client');
-            navigate('/app', { replace: true });
+            if (esElPrimero) {
+              if (profile) guardarModo(profile.id, 'client');
+              navigate('/app', { replace: true });
+            } else {
+              navigate('/panel', { replace: true });
+            }
           }}
           style={{
             width: '100%',
@@ -620,7 +635,7 @@ export function OwnerOnboarding() {
             color: C.sub,
           }}
         >
-          Lo hago después, quiero reservar
+          {esElPrimero ? 'Lo hago después, quiero reservar' : 'Cancelar'}
         </button>
       </div>
     </div>

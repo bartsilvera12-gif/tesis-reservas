@@ -807,6 +807,92 @@ try {
   // transaccion termina en ROLLBACK igual.
   await asAdmin();
 
+  console.log('\n--- 14. Varios negocios con la misma cuenta ---');
+  // Karen ya tiene "Lo de Karen" (seccion 10). Abre un segundo local: son
+  // negocios independientes, no sucursales de uno solo.
+  await asUser(cliente);
+  const segundo = await debeAndar(
+    'la misma cuenta puede abrir un segundo negocio',
+    `insert into tesisreserva.businesses (owner_id, category_id, name, slug, city,
+       reservation_type, default_slot_duration_minutes, slot_step_minutes, active,
+       latitude, longitude)
+     values ($1,$2,'Lo de Karen 2','lo-de-karen-2','Asuncion','table',60,30,true,-25.31,-57.61)
+     returning id`,
+    [cliente, cat],
+  );
+
+  const mios = await c.query(
+    `select count(*)::int n from tesisreserva.businesses where owner_id=$1`, [cliente]);
+  ok('los ve a los dos como suyos', mios.rows[0].n === 2, `(${mios.rows[0].n})`);
+
+  if (segundo) {
+    const idSegundo = segundo.rows[0].id;
+    const idPrimero = propio.rows[0].id;
+
+    // Cada local tiene su propia capacidad: llenar uno no toca al otro.
+    for (const [b, cant] of [[idPrimero, 1], [idSegundo, 2]]) {
+      await c.query(
+        `insert into tesisreserva.business_capacity (business_id, party_size, quantity)
+         values ($1,2,$2)`, [b, cant]);
+      for (let d = 0; d < 7; d++) {
+        const h = (await c.query(
+          `insert into tesisreserva.business_hours (business_id, day_of_week, enabled)
+           values ($1,$2,true) returning id`, [b, d])).rows[0].id;
+        await c.query(
+          `insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at)
+           values ($1,'08:00','22:00')`, [h]);
+      }
+    }
+
+    // Otro cliente ocupa la unica mesa del primero.
+    await asUser(cliente2);
+    await debeAndar(
+      'alguien ocupa la unica mesa del primer local',
+      `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '19:00', 2, null, null)).id`,
+      [idPrimero],
+    );
+    await debeFallar(
+      'y el primero queda sin lugar a esa hora',
+      `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '19:00', 2, null, null)`,
+      [idPrimero],
+    );
+    await debeAndar(
+      'pero el segundo sigue libre: son negocios aparte',
+      `select (tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '19:00', 2, null, null)).id`,
+      [idSegundo],
+    );
+
+    // Y las reglas de siempre valen para los dos.
+    await asUser(cliente);
+    await debeFallar(
+      'la duenia no puede reservarse una mesa en el segundo tampoco',
+      `select tesisreserva.create_reservation($1, tesisreserva.hoy()+1, '20:00', 2, null, null)`,
+      [idSegundo],
+    );
+
+    // Ojo con el predicado: un UPDATE que RLS no deja ver no lanza excepcion,
+    // toca CERO filas y vuelve como si nada. Lo que hay que mirar es el
+    // efecto, no si exploto. (El caso del renglon 461 sí lanza, porque ahí
+    // choca contra el WITH CHECK.)
+    await asUser(intruso);
+    const intento = await c.query(
+      `update tesisreserva.businesses set name='Robado' where id=$1`, [idSegundo]);
+    ok('el UPDATE de otro dueno no toca ninguna fila', intento.rowCount === 0,
+       `(toco ${intento.rowCount})`);
+    await asAdmin();
+    const sigue = await c.query(
+      `select name from tesisreserva.businesses where id=$1`, [idSegundo]);
+    ok('y el nombre quedo intacto', sigue.rows[0].name === 'Lo de Karen 2',
+       `(quedo "${sigue.rows[0].name}")`);
+
+    await asUser(cliente);
+    const stats = await c.query(
+      `select (tesisreserva.business_stats($1)->>'today_count') as x`, [idSegundo]);
+    ok('cada local tiene sus propias estadisticas', stats.rows.length === 1);
+  }
+
+  await asAdmin();
+
   console.log(`\n==========  ${pass} PASS  /  ${fail} FAIL  ==========`);
   if (fallos.length) {
     console.log('\nFallaron:');

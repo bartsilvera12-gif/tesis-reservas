@@ -122,11 +122,10 @@ function OwnerGate() {
     return <SinNegocio />;
   }
 
-  // Ya configuró: no tiene sentido volver al onboarding.
-  if (businesses.length > 0 && isOnboarding) {
-    return <Navigate to="/panel" replace />;
-  }
-
+  // Tener un local no cierra la puerta a cargar otro: la app ya sabe manejar
+  // varios (el panel tiene selector y cada uno lleva sus propias reservas),
+  // pero hasta acá el alta rebotaba a quien ya tenía uno y no había forma de
+  // sumar el segundo desde el teléfono.
   return <Outlet />;
 }
 
