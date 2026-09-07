@@ -70,15 +70,71 @@ export interface BusinessQuery {
   categoryId?: string | null;
   city?: string | null;
   coords?: Coords | null;
+  /** Sólo lo que esté a menos de estos km. Necesita `coords`. */
+  radiusKm?: number | null;
   limit?: number;
 }
 
-/** Búsqueda real: nombre, barrio, ciudad y descripción. */
+/**
+ * Cuántos km mide un grado de latitud.
+ *
+ * Sale del MISMO radio de tierra que usa `haversineKm`. Con otra constante
+ * (111,32, la del ecuador de WGS84) la caja queda unos metros más chica que
+ * el círculo, y los locales que caen justo sobre el borde desaparecen sin
+ * que nada avise.
+ */
+const KM_POR_GRADO_LAT = (Math.PI * 6371) / 180;
+
+/**
+ * Cuánto se agranda la caja por las dudas.
+ *
+ * La caja es sólo un prefiltro: lo que sobra lo descarta después la distancia
+ * exacta. Que sobre un poco no le cuesta nada a nadie; que falte esconde
+ * locales, así que el error se paga siempre para el mismo lado.
+ */
+const MARGEN_CAJA = 1.02;
+
+/**
+ * La caja de coordenadas que contiene un círculo de `radiusKm` alrededor de
+ * un punto.
+ *
+ * Se exporta para poder probarla: es matemática fácil de romper sin que se
+ * note (un local del borde que deja de aparecer no da ningún error).
+ */
+export function cajaDeBusqueda(centro: Coords, radiusKm: number) {
+  const dLat = (radiusKm * MARGEN_CAJA) / KM_POR_GRADO_LAT;
+  // Los meridianos se juntan hacia los polos: un grado de longitud mide menos
+  // cuanto más lejos del ecuador. Sin esto, en Asunción la caja quedaría un
+  // 10% angosta y se perderían locales del borde este y oeste.
+  const dLng = dLat / Math.max(Math.cos((centro.lat * Math.PI) / 180), 0.01);
+
+  return {
+    latMin: centro.lat - dLat,
+    latMax: centro.lat + dLat,
+    lngMin: centro.lng - dLng,
+    lngMax: centro.lng + dLng,
+  };
+}
+
+/**
+ * Búsqueda real: nombre, barrio, ciudad y descripción.
+ *
+ * Cuando hay radio, el recorte empieza EN LA BASE con una caja de
+ * coordenadas. Podría filtrarse todo acá con la distancia exacta, pero
+ * entonces el servidor mandaría los negocios de todo el país para tirar casi
+ * todos: con el `limit` puesto, además, podrían llegar 50 lejanos y quedarse
+ * afuera justo el de la esquina.
+ *
+ * La caja es un cuadrado, así que trae de más en las diagonales. Eso se
+ * corrige abajo con la distancia real, que se calcula igual para mostrar los
+ * "a 1,4 km".
+ */
 export async function fetchBusinesses({
   search,
   categoryId,
   city,
   coords = null,
+  radiusKm = null,
   limit = 50,
 }: BusinessQuery = {}): Promise<BusinessWithMeta[]> {
   let query = supabase
@@ -89,6 +145,15 @@ export async function fetchBusinesses({
 
   if (categoryId) query = query.eq('category_id', categoryId);
   if (city) query = query.eq('city', city);
+
+  if (coords && radiusKm) {
+    const caja = cajaDeBusqueda(coords, radiusKm);
+    query = query
+      .gte('latitude', caja.latMin)
+      .lte('latitude', caja.latMax)
+      .gte('longitude', caja.lngMin)
+      .lte('longitude', caja.lngMax);
+  }
 
   const term = search?.trim();
   if (term) {
@@ -102,7 +167,12 @@ export async function fetchBusinesses({
   const { data, error } = await query;
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar los negocios.'));
 
-  const list = ((data ?? []) as RawBusiness[]).map((row) => decorate(row, coords));
+  let list = ((data ?? []) as RawBusiness[]).map((row) => decorate(row, coords));
+
+  // La caja trae de más en las esquinas: acá se recorta con la distancia real.
+  if (coords && radiusKm) {
+    list = list.filter((b) => b.distance_km != null && b.distance_km <= radiusKm);
+  }
 
   // Cerca primero cuando hay ubicación; si no, por puntaje.
   list.sort((a, b) => {

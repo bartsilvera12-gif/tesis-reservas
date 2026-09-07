@@ -1,9 +1,14 @@
 -- ============================================================================
---  Reservá.  —  Datos demo del prototipo  (schema `tesisreserva`)
+--  Datos de ejemplo del schema `tesisreserva`
+--  ---------------------------------------------------------------------------
+--  Negocios demo repartidos por los cinco rubros y por distintos barrios del
+--  Gran Asunción. Están a distancias muy diferentes a propósito: sirve para
+--  ver funcionando el filtro de "cerca mío" del mapa, que con todos los pines
+--  en la misma cuadra no se podría probar.
 --
---  Migra a la base los 4 negocios que antes estaban hardcodeados en
---  `App Reservas.dc.html` (const BIZ, carta, revs, days, tables, promos y las
---  coordenadas de reserva-map.js).
+--  Está escrito con listas y bucles, no con un bloque por negocio: agregar
+--  otro local es sumar una fila, y así el seed no se vuelve impagable a medida
+--  que crece.
 --
 --  ---------------------------------------------------------------------------
 --  IMPORTANTE — usuarios de Auth
@@ -27,13 +32,14 @@
 set local search_path = tesisreserva, public, extensions;
 
 -- ---------------------------------------------------------------------------
--- Categorías de negocio (no dependen de ningún usuario)
+-- Categorías: son las cinco del producto y no dependen de ningún usuario.
 -- ---------------------------------------------------------------------------
 insert into tesisreserva.business_categories (name, slug, icon, sort_order, active) values
-  ('Restaurante', 'restaurante', 'utensils', 1, true),
-  ('Cafetería',   'cafeteria',   'coffee',   2, true),
-  ('Barbería',    'barberia',    'scissors', 3, true),
-  ('Spa',         'spa',         'sparkles', 4, true)
+  ('Lavaderos',    'lavaderos',    'car',      1, true),
+  ('Peluquerías',  'peluquerias',  'scissors', 2, true),
+  ('Restaurantes', 'restaurantes', 'utensils', 3, true),
+  ('Hospedajes',   'hospedajes',   'bed',      4, true),
+  ('Spa de uñas',  'spa-de-unas',  'sparkles', 5, true)
 on conflict (slug) do update
   set name = excluded.name,
       icon = excluded.icon,
@@ -47,22 +53,15 @@ do $seed$
 declare
   v_owner  uuid;
   v_client uuid;
-
-  v_cat_rest uuid;
-  v_cat_cafe uuid;
-  v_cat_barb uuid;
-  v_cat_spa  uuid;
-
-  v_cab   uuid;
-  v_lupe  uuid;
-  v_prado uuid;
-  v_aqua  uuid;
-
-  v_hour uuid;
-  v_cat  uuid;
-  v_biz  uuid;
-  v_rev  uuid;
-  d      int;
+  r        record;
+  v_biz    uuid;
+  v_hour   uuid;
+  v_cat    uuid;
+  v_tipo   text;
+  v_dur    int;
+  v_paso   int;
+  d        int;
+  v_slugs  text[];
 begin
   select id into v_owner  from auth.users where email = 'demo.owner@tesisreserva.py'  limit 1;
   select id into v_client from auth.users where email = 'demo.client@tesisreserva.py' limit 1;
@@ -76,228 +75,358 @@ begin
     return;
   end if;
 
-  -- Aseguramos que el profile del owner exista y tenga el role correcto
-  insert into tesisreserva.profiles (id, full_name, email, role, city)
-  values (v_owner, 'Dueño Demo', 'demo.owner@tesisreserva.py', 'owner', 'Asunción')
-  on conflict (id) do update set role = 'owner';
-
-  select id into v_cat_rest from tesisreserva.business_categories where slug = 'restaurante';
-  select id into v_cat_cafe from tesisreserva.business_categories where slug = 'cafeteria';
-  select id into v_cat_barb from tesisreserva.business_categories where slug = 'barberia';
-  select id into v_cat_spa  from tesisreserva.business_categories where slug = 'spa';
+  insert into tesisreserva.profiles (id, full_name, email, role, city, is_owner)
+  values (v_owner, 'Dueño Demo', 'demo.owner@tesisreserva.py', 'owner', 'Asunción', true)
+  on conflict (id) do update set role = 'owner', is_owner = true;
 
   -- ======================= negocios =======================
-  insert into tesisreserva.businesses
-    (owner_id, category_id, name, slug, description, address, neighborhood, city,
-     latitude, longitude, phone, whatsapp, active,
-     deposit_enabled, deposit_amount, deposit_per_person,
-     reservation_type, default_slot_duration_minutes, slot_step_minutes, max_concurrent_reservations)
-  values
-    (v_owner, v_cat_rest, 'La Cabaña', 'la-cabana',
-     'Parrilla y cocina paraguaya en un quincho de madera. Cortes premium, ambiente familiar y música en vivo los viernes.',
-     'Av. Mcal. López 1234', 'Villa Morra', 'Asunción',
-     -25.2967, -57.5762, '+595 21 600 100', '+595 981 600100', true,
-     true, 50000, true, 'table', 90, 30, 1),
+  -- El rubro define solo cómo se reserva (turno, mesa, servicio o noches) y
+  -- cuánto dura: es la misma tabla que usa la app en src/lib/rubros.ts, así
+  -- que los datos de ejemplo no pueden quedar en otra cosa que el producto.
+  for r in
+    select * from (values
+      -- slug, nombre, rubro, descripción, dirección, barrio, ciudad, lat, lng,
+      -- teléfono, seña, monto, por persona, día cerrado (-1 = ninguno),
+      -- abre, cierra, turno partido
+      ('la-cabana', 'La Cabaña', 'restaurantes',
+       'Parrilla y cocina paraguaya en un quincho de madera. Cortes premium, ambiente familiar y música en vivo los viernes.',
+       'Av. Mcal. López 1234', 'Villa Morra', 'Asunción', -25.2967, -57.5762,
+       '+595 21 600 100', true, 50000, true, 1, '11:30', '23:00', true),
 
-    (v_owner, v_cat_cafe, 'Lupe Café', 'lupe-cafe',
-     'Café de especialidad, brunch de fin de semana y pastelería propia.',
-     'Av. España 850', 'Carmelitas', 'Asunción',
-     -25.2839, -57.5671, '+595 21 600 200', '+595 981 600200', true,
-     false, 0, true, 'table', 60, 30, 1),
+      ('lupe-cafe', 'Lupe Café', 'restaurantes',
+       'Café de especialidad, brunch de fin de semana y pastelería propia.',
+       'Av. España 850', 'Carmelitas', 'Asunción', -25.2839, -57.5671,
+       '+595 21 600 200', false, 0, false, -1, '08:00', '20:00', false),
 
-    (v_owner, v_cat_barb, 'Barbería El Prado', 'barberia-el-prado',
-     'Cortes clásicos y modernos, afeitado a navaja y atención con turno puntual.',
-     'Palma 450', 'Centro', 'Asunción',
-     -25.2864, -57.6369, '+595 21 600 300', '+595 981 600300', true,
-     false, 0, false, 'service', 45, 15, 3),
+      ('bocatto-trattoria', 'Bocatto Trattoria', 'restaurantes',
+       'Pastas caseras y pizza a la piedra. Carta de vinos y mesas en el patio.',
+       'Senador Long 780', 'Las Mercedes', 'Asunción', -25.2921, -57.5904,
+       '+595 21 600 500', true, 40000, false, 1, '11:30', '23:00', true),
 
-    (v_owner, v_cat_spa, 'Aqua Spa & Wellness', 'aqua-spa-wellness',
-     'Masajes, circuito de aguas y tratamientos faciales. Ideal para regalar.',
-     'Denis Roa 1500', 'Recoleta', 'Asunción',
-     -25.3052, -57.5858, '+595 21 600 400', '+595 981 600400', true,
-     true, 100000, false, 'service', 60, 30, 2)
-  on conflict (slug) do update set
-    owner_id                      = excluded.owner_id,
-    category_id                   = excluded.category_id,
-    description                   = excluded.description,
-    address                       = excluded.address,
-    neighborhood                  = excluded.neighborhood,
-    latitude                      = excluded.latitude,
-    longitude                     = excluded.longitude,
-    phone                         = excluded.phone,
-    whatsapp                      = excluded.whatsapp,
-    deposit_enabled               = excluded.deposit_enabled,
-    deposit_amount                = excluded.deposit_amount,
-    deposit_per_person            = excluded.deposit_per_person,
-    reservation_type              = excluded.reservation_type,
-    default_slot_duration_minutes = excluded.default_slot_duration_minutes,
-    slot_step_minutes             = excluded.slot_step_minutes,
-    max_concurrent_reservations   = excluded.max_concurrent_reservations,
-    active                        = true;
+      ('marisqueria-costanera', 'Marisquería Costanera', 'restaurantes',
+       'Pescados de río y mariscos frescos, con vista a la bahía.',
+       'Av. Costanera 210', 'Sajonia', 'Asunción', -25.3084, -57.6271,
+       '+595 21 600 600', true, 60000, true, 1, '11:00', '22:30', false),
 
-  select id into v_cab   from tesisreserva.businesses where slug = 'la-cabana';
-  select id into v_lupe  from tesisreserva.businesses where slug = 'lupe-cafe';
-  select id into v_prado from tesisreserva.businesses where slug = 'barberia-el-prado';
-  select id into v_aqua  from tesisreserva.businesses where slug = 'aqua-spa-wellness';
+      ('sushi-nu', 'Sushi Ñu', 'restaurantes',
+       'Barra de sushi y rolls de autor. Pedidos para llevar y salón chico.',
+       'Ruta Mcal. Estigarribia 3400', 'Centro', 'San Lorenzo', -25.3402, -57.5098,
+       '+595 21 600 700', false, 0, false, 0, '18:00', '23:30', false),
 
-  -- ======================= horarios =======================
-  -- day_of_week: 0=Dom 1=Lun ... 6=Sáb   (igual que extract(dow))
-  -- La Cabaña: Lunes cerrado, resto con horario partido (como el prototipo).
-  foreach d in array array[0,1,2,3,4,5,6] loop
-    insert into tesisreserva.business_hours (business_id, day_of_week, enabled)
-    values (v_cab, d, d <> 1)
-    on conflict (business_id, day_of_week) do update set enabled = excluded.enabled
-    returning id into v_hour;
+      ('barberia-el-prado', 'Barbería El Prado', 'peluquerias',
+       'Cortes clásicos y modernos, afeitado a navaja y atención con turno puntual.',
+       'Palma 450', 'Centro', 'Asunción', -25.2864, -57.6369,
+       '+595 21 600 300', false, 0, false, 0, '09:00', '19:00', false),
 
-    delete from tesisreserva.business_hour_slots where business_hour_id = v_hour;
+      ('studio-kuna', 'Studio Kuña', 'peluquerias',
+       'Color, alisados y peinados para eventos. Turnos de mañana y tarde.',
+       'Charles de Gaulle 1120', 'Villa Morra', 'Asunción', -25.2989, -57.5731,
+       '+595 21 600 800', true, 30000, false, 0, '09:00', '20:00', false),
 
-    if d = 1 then
-      null;                                     -- lunes cerrado
-    elsif d = 0 then                            -- domingo: sólo mediodía
-      insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
-      values (v_hour, '11:30', '15:00', 1);
-    elsif d = 6 then                            -- sábado: corrido
-      insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
-      values (v_hour, '11:30', '23:59', 1);
-    elsif d = 5 then                            -- viernes: cierra más tarde
-      insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
-      values (v_hour, '11:30', '15:00', 1), (v_hour, '19:00', '23:59', 2);
-    else                                        -- mar/mié/jue
-      insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
-      values (v_hour, '11:30', '15:00', 1), (v_hour, '19:00', '23:00', 2);
-    end if;
+      ('barberia-guarani', 'Barbería Guaraní', 'peluquerias',
+       'Barbería de barrio, atención rápida y precios accesibles.',
+       'Cacique Lambaré 640', 'Centro', 'Lambaré', -25.3437, -57.6062,
+       '+595 21 600 900', false, 0, false, 0, '08:30', '19:00', false),
+
+      ('aqua-spa-wellness', 'Aqua Spa & Wellness', 'spa-de-unas',
+       'Manicura, pedicura, esmaltado semipermanente y tratamientos de manos.',
+       'Denis Roa 1500', 'Recoleta', 'Asunción', -25.3052, -57.5858,
+       '+595 21 600 400', true, 100000, false, 1, '10:00', '20:00', false),
+
+      ('nails-ysapy', 'Nails Studio Ysapy', 'spa-de-unas',
+       'Uñas esculpidas, kapping y nail art. Trabajamos con turno reservado.',
+       'Malutín 470', 'Carmelitas', 'Asunción', -25.2852, -57.5694,
+       '+595 21 601 000', true, 40000, false, 0, '09:00', '19:00', false),
+
+      ('bella-unas', 'Bella Uñas', 'spa-de-unas',
+       'Semipermanente, pedicura spa y retirado de gel.',
+       'Ruta Mcal. Estigarribia 1180', 'Centro', 'Fernando de la Mora', -25.3215, -57.5402,
+       '+595 21 601 100', false, 0, false, 0, '09:00', '18:30', false),
+
+      ('lavadero-autolimpio', 'Lavadero Autolimpio', 'lavaderos',
+       'Lavado completo, encerado y limpieza de tapizados. Sala de espera con wifi.',
+       'Av. Molas López 2300', 'Mburucuyá', 'Asunción', -25.3176, -57.5623,
+       '+595 21 601 200', false, 0, false, 0, '07:30', '18:00', false),
+
+      ('full-wash-luque', 'Full Wash', 'lavaderos',
+       'Lavado a mano y pulido de faros. Atención mientras esperás.',
+       'Av. Aviadores del Chaco 4100', 'Centro', 'Luque', -25.2673, -57.4869,
+       '+595 21 601 300', false, 0, false, -1, '07:00', '19:00', false),
+
+      ('cabanas-del-lago', 'Cabañas del Lago', 'hospedajes',
+       'Cabañas de madera frente al lago, con parrilla y desayuno incluido.',
+       'Ruta Luque - Areguá km 28', 'Costanera', 'Areguá', -25.3100, -57.3900,
+       '+595 21 601 400', true, 150000, false, -1, '08:00', '20:00', false),
+
+      ('posada-del-rio', 'Posada del Río', 'hospedajes',
+       'Posada familiar con pileta y estacionamiento. A diez minutos del centro.',
+       'Ruta Ñemby 950', 'Centro', 'Ñemby', -25.3934, -57.5362,
+       '+595 21 601 500', true, 100000, false, -1, '08:00', '21:00', false),
+
+      ('hotel-estacion-central', 'Hotel Estación Central', 'hospedajes',
+       'Hotel céntrico a dos cuadras de la Estación. Desayuno buffet y cochera.',
+       'Eligio Ayala 620', 'Centro', 'Asunción', -25.2828, -57.6335,
+       '+595 21 601 600', true, 120000, false, -1, '00:00', '23:59', false)
+    ) as t(slug, nombre, rubro, descripcion, direccion, barrio, ciudad, lat, lng,
+           tel, sena, monto, por_persona, cerrado, abre, cierra, partido)
+  loop
+    -- El rubro manda: mismos valores que rubroDe() en el frontend.
+    select case r.rubro
+             when 'restaurantes' then 'table'
+             when 'hospedajes'   then 'stay'
+             when 'spa-de-unas'  then 'service'
+             else 'slot'
+           end,
+           case r.rubro
+             when 'restaurantes' then 90
+             when 'peluquerias'  then 45
+             when 'spa-de-unas'  then 45
+             else 60
+           end,
+           case r.rubro
+             when 'restaurantes' then 30
+             when 'hospedajes'   then 60
+             else 15
+           end
+      into v_tipo, v_dur, v_paso;
+
+    insert into tesisreserva.businesses
+      (owner_id, category_id, name, slug, description, address, neighborhood, city,
+       latitude, longitude, phone, whatsapp, active,
+       deposit_enabled, deposit_amount, deposit_per_person,
+       deposit_bank_name, deposit_account_holder, deposit_account_number,
+       reservation_type, default_slot_duration_minutes, slot_step_minutes,
+       max_concurrent_reservations)
+    select v_owner,
+           (select id from tesisreserva.business_categories where slug = r.rubro),
+           r.nombre, r.slug, r.descripcion, r.direccion, r.barrio, r.ciudad,
+           r.lat, r.lng, r.tel, r.tel, true,
+           r.sena, r.monto, r.por_persona,
+           -- Sin cuenta cargada el cliente ve el monto y no tiene dónde
+           -- transferirlo, así que los que piden seña la traen completa.
+           case when r.sena then 'Banco Continental' end,
+           case when r.sena then r.nombre || ' SRL' end,
+           case when r.sena then '44' || lpad((abs(hashtext(r.slug)) % 100000000)::text, 8, '0') end,
+           v_tipo, v_dur, v_paso,
+           case when v_tipo in ('slot', 'service') then 3 else 1 end
+    on conflict (slug) do update set
+      owner_id                      = excluded.owner_id,
+      category_id                   = excluded.category_id,
+      name                          = excluded.name,
+      description                   = excluded.description,
+      address                       = excluded.address,
+      neighborhood                  = excluded.neighborhood,
+      city                          = excluded.city,
+      latitude                      = excluded.latitude,
+      longitude                     = excluded.longitude,
+      phone                         = excluded.phone,
+      whatsapp                      = excluded.whatsapp,
+      deposit_enabled               = excluded.deposit_enabled,
+      deposit_amount                = excluded.deposit_amount,
+      deposit_per_person            = excluded.deposit_per_person,
+      deposit_bank_name             = excluded.deposit_bank_name,
+      deposit_account_holder        = excluded.deposit_account_holder,
+      deposit_account_number        = excluded.deposit_account_number,
+      reservation_type              = excluded.reservation_type,
+      default_slot_duration_minutes = excluded.default_slot_duration_minutes,
+      slot_step_minutes             = excluded.slot_step_minutes,
+      max_concurrent_reservations   = excluded.max_concurrent_reservations,
+      active                        = true;
+
+    select id into v_biz from tesisreserva.businesses where slug = r.slug;
+    v_slugs := coalesce(v_slugs, '{}') || r.slug;
+
+    -- ---- horarios ----
+    foreach d in array array[0,1,2,3,4,5,6] loop
+      insert into tesisreserva.business_hours (business_id, day_of_week, enabled)
+      values (v_biz, d, d <> r.cerrado)
+      on conflict (business_id, day_of_week) do update set enabled = excluded.enabled
+      returning id into v_hour;
+
+      delete from tesisreserva.business_hour_slots where business_hour_id = v_hour;
+      if d = r.cerrado then
+        continue;
+      end if;
+
+      if r.partido then
+        -- Turno partido: el mediodía y la noche, como cualquier parrilla.
+        insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
+        values (v_hour, r.abre::time, '15:00', 1),
+               (v_hour, '19:00', r.cierra::time, 2);
+      else
+        insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
+        values (v_hour, r.abre::time, r.cierra::time, 1);
+      end if;
+    end loop;
   end loop;
 
-  -- Lupe Café: todos los días de mañana/tarde
-  foreach d in array array[0,1,2,3,4,5,6] loop
-    insert into tesisreserva.business_hours (business_id, day_of_week, enabled)
-    values (v_lupe, d, true)
-    on conflict (business_id, day_of_week) do update set enabled = true
-    returning id into v_hour;
-    delete from tesisreserva.business_hour_slots where business_hour_id = v_hour;
-    insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
-    values (v_hour, '08:00', '20:00', 1);
-  end loop;
+  -- ======================= mesas =======================
+  delete from tesisreserva.business_capacity
+   where business_id in (select id from tesisreserva.businesses where slug = any(v_slugs));
 
-  -- Barbería El Prado: lunes a sábado
-  foreach d in array array[0,1,2,3,4,5,6] loop
-    insert into tesisreserva.business_hours (business_id, day_of_week, enabled)
-    values (v_prado, d, d <> 0)
-    on conflict (business_id, day_of_week) do update set enabled = excluded.enabled
-    returning id into v_hour;
-    delete from tesisreserva.business_hour_slots where business_hour_id = v_hour;
-    if d <> 0 then
-      insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
-      values (v_hour, '09:00', '19:00', 1);
-    end if;
-  end loop;
-
-  -- Aqua Spa: martes a domingo
-  foreach d in array array[0,1,2,3,4,5,6] loop
-    insert into tesisreserva.business_hours (business_id, day_of_week, enabled)
-    values (v_aqua, d, d <> 1)
-    on conflict (business_id, day_of_week) do update set enabled = excluded.enabled
-    returning id into v_hour;
-    delete from tesisreserva.business_hour_slots where business_hour_id = v_hour;
-    if d <> 1 then
-      insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at, sort_order)
-      values (v_hour, '10:00', '20:00', 1);
-    end if;
-  end loop;
-
-  -- ======================= capacidad =======================
-  -- Reemplaza el `tables` hardcodeado: 2->6, 4->5, 6->2, 8->1
-  foreach d in array array[2,4,6,8] loop
+  for r in
+    select * from (values
+      ('la-cabana', 2, 6), ('la-cabana', 4, 5), ('la-cabana', 6, 2), ('la-cabana', 8, 1),
+      ('lupe-cafe', 2, 8), ('lupe-cafe', 4, 4), ('lupe-cafe', 6, 2),
+      ('bocatto-trattoria', 2, 5), ('bocatto-trattoria', 4, 6), ('bocatto-trattoria', 6, 3),
+      ('marisqueria-costanera', 2, 4), ('marisqueria-costanera', 4, 6), ('marisqueria-costanera', 8, 2),
+      ('sushi-nu', 2, 6), ('sushi-nu', 4, 3)
+    ) as t(negocio, tamano, cantidad)
+  loop
     insert into tesisreserva.business_capacity (business_id, party_size, quantity, active)
-    values (v_cab, d, case d when 2 then 6 when 4 then 5 when 6 then 2 else 1 end, true)
-    on conflict (business_id, party_size) do update set quantity = excluded.quantity, active = true;
-
-    insert into tesisreserva.business_capacity (business_id, party_size, quantity, active)
-    values (v_lupe, d, case d when 2 then 8 when 4 then 4 when 6 then 2 else 0 end, true)
-    on conflict (business_id, party_size) do update set quantity = excluded.quantity, active = true;
+    select id, r.tamano, r.cantidad, true
+      from tesisreserva.businesses where slug = r.negocio
+    on conflict (business_id, party_size) do update
+      set quantity = excluded.quantity, active = true;
   end loop;
 
-  -- ======================= carta / servicios =======================
-  -- Se limpia y se vuelve a cargar para que el seed sea idempotente.
-  delete from tesisreserva.catalog_items      where business_id in (v_cab, v_lupe, v_prado, v_aqua);
-  delete from tesisreserva.catalog_categories where business_id in (v_cab, v_lupe, v_prado, v_aqua);
+  -- ======================= carta, servicios y alojamientos =======================
+  -- Lo que alguien ya reservó no se borra: se perdería con qué se hizo esa
+  -- reserva. Se apaga, así tampoco aparece duplicado en la carta nueva.
+  update tesisreserva.catalog_items i set active = false
+   where i.business_id in (select id from tesisreserva.businesses where slug = any(v_slugs))
+     and exists (select 1 from tesisreserva.reservations x where x.catalog_item_id = i.id);
 
-  -- La Cabaña
-  foreach v_biz in array array[v_cab] loop
-    insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_biz, 'Entradas', 1);
-    insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_biz, 'Parrilla', 2);
-    insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_biz, 'Pescados', 3);
-    insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_biz, 'Postres',  4);
+  delete from tesisreserva.catalog_items i
+   where i.business_id in (select id from tesisreserva.businesses where slug = any(v_slugs))
+     and not exists (select 1 from tesisreserva.reservations x where x.catalog_item_id = i.id);
 
-    select id into v_cat from tesisreserva.catalog_categories where business_id = v_biz and name = 'Parrilla';
-    insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, sort_order)
-    values (v_biz, v_cat, 'Bife de chorizo', 85000, 'product', 1);
+  delete from tesisreserva.catalog_categories c
+   where c.business_id in (select id from tesisreserva.businesses where slug = any(v_slugs))
+     and not exists (select 1 from tesisreserva.catalog_items i where i.category_id = c.id);
 
-    select id into v_cat from tesisreserva.catalog_categories where business_id = v_biz and name = 'Entradas';
-    insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, sort_order)
-    values (v_biz, v_cat, 'Provoleta a las brasas', 45000, 'product', 2);
+  for r in
+    select * from (values
+      -- negocio, grupo, nombre, precio, tipo, minutos, capacidad, unidades
+      ('la-cabana', 'Entradas', 'Provoleta a las brasas', 45000, 'product', null, null, null),
+      ('la-cabana', 'Parrilla', 'Bife de chorizo', 85000, 'product', null, null, null),
+      ('la-cabana', 'Parrilla', 'Costilla al horno de barro', 95000, 'product', null, null, null),
+      ('la-cabana', 'Pescados', 'Surubí a la parrilla', 95000, 'product', null, null, null),
+      ('la-cabana', 'Postres', 'Flan casero con dulce', 25000, 'product', null, null, null),
 
-    select id into v_cat from tesisreserva.catalog_categories where business_id = v_biz and name = 'Pescados';
-    insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, sort_order)
-    values (v_biz, v_cat, 'Surubí a la parrilla', 95000, 'product', 3);
+      ('lupe-cafe', 'Café', 'Flat white', 22000, 'product', null, null, null),
+      ('lupe-cafe', 'Café', 'Cold brew', 25000, 'product', null, null, null),
+      ('lupe-cafe', 'Brunch', 'Brunch Lupe', 65000, 'product', null, null, null),
+      ('lupe-cafe', 'Pastelería', 'Cheesecake de maracuyá', 28000, 'product', null, null, null),
 
-    select id into v_cat from tesisreserva.catalog_categories where business_id = v_biz and name = 'Postres';
-    insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, sort_order)
-    values (v_biz, v_cat, 'Flan casero con dulce', 25000, 'product', 4);
+      ('bocatto-trattoria', 'Pastas', 'Sorrentinos de jamón y queso', 72000, 'product', null, null, null),
+      ('bocatto-trattoria', 'Pastas', 'Ñoquis con estofado', 65000, 'product', null, null, null),
+      ('bocatto-trattoria', 'Pizzas', 'Pizza margarita a la piedra', 58000, 'product', null, null, null),
+      ('bocatto-trattoria', 'Postres', 'Tiramisú', 32000, 'product', null, null, null),
+
+      ('marisqueria-costanera', 'Entradas', 'Ceviche de surubí', 68000, 'product', null, null, null),
+      ('marisqueria-costanera', 'Principales', 'Paella de mariscos', 145000, 'product', null, null, null),
+      ('marisqueria-costanera', 'Principales', 'Dorado a la plancha', 98000, 'product', null, null, null),
+
+      ('sushi-nu', 'Rolls', 'Roll Ñu (10 piezas)', 75000, 'product', null, null, null),
+      ('sushi-nu', 'Rolls', 'Tabla mixta (24 piezas)', 165000, 'product', null, null, null),
+      ('sushi-nu', 'Entradas', 'Gyozas de cerdo', 42000, 'product', null, null, null),
+
+      ('barberia-el-prado', 'Servicios', 'Corte clásico', 60000, 'service', 45, null, null),
+      ('barberia-el-prado', 'Servicios', 'Corte + barba', 90000, 'service', 60, null, null),
+      ('barberia-el-prado', 'Servicios', 'Afeitado a navaja', 50000, 'service', 30, null, null),
+
+      ('studio-kuna', 'Servicios', 'Corte y brushing', 90000, 'service', 60, null, null),
+      ('studio-kuna', 'Servicios', 'Color completo', 250000, 'service', 120, null, null),
+      ('studio-kuna', 'Servicios', 'Peinado para evento', 150000, 'service', 60, null, null),
+
+      ('barberia-guarani', 'Servicios', 'Corte de pelo', 40000, 'service', 30, null, null),
+      ('barberia-guarani', 'Servicios', 'Corte y barba', 60000, 'service', 45, null, null),
+
+      ('aqua-spa-wellness', 'Servicios', 'Semipermanente en manos', 120000, 'service', 60, null, null),
+      ('aqua-spa-wellness', 'Servicios', 'Pedicura spa', 140000, 'service', 60, null, null),
+      ('aqua-spa-wellness', 'Servicios', 'Manicura rusa', 130000, 'service', 60, null, null),
+
+      ('nails-ysapy', 'Servicios', 'Uñas esculpidas', 180000, 'service', 90, null, null),
+      ('nails-ysapy', 'Servicios', 'Kapping en gel', 150000, 'service', 75, null, null),
+      ('nails-ysapy', 'Servicios', 'Nail art por uña', 15000, 'service', 15, null, null),
+
+      ('bella-unas', 'Servicios', 'Esmaltado semipermanente', 90000, 'service', 45, null, null),
+      ('bella-unas', 'Servicios', 'Retirado de gel', 45000, 'service', 30, null, null),
+
+      ('lavadero-autolimpio', 'Servicios', 'Lavado completo', 60000, 'service', 60, null, null),
+      ('lavadero-autolimpio', 'Servicios', 'Lavado + encerado', 110000, 'service', 90, null, null),
+      ('lavadero-autolimpio', 'Servicios', 'Limpieza de tapizados', 180000, 'service', 120, null, null),
+
+      ('full-wash-luque', 'Servicios', 'Lavado a mano', 55000, 'service', 60, null, null),
+      ('full-wash-luque', 'Servicios', 'Pulido de faros', 90000, 'service', 60, null, null),
+
+      -- Los alojamientos llevan capacidad y cuántas unidades iguales hay.
+      ('cabanas-del-lago', 'Alojamientos', 'Cabaña del Lago', 350000, 'room', null, 4, 2),
+      ('cabanas-del-lago', 'Alojamientos', 'Cabaña familiar', 500000, 'room', null, 6, 1),
+      ('cabanas-del-lago', 'Alojamientos', 'Habitación doble', 220000, 'room', null, 2, 3),
+
+      ('posada-del-rio', 'Alojamientos', 'Habitación matrimonial', 180000, 'room', null, 2, 4),
+      ('posada-del-rio', 'Alojamientos', 'Habitación cuádruple', 280000, 'room', null, 4, 2),
+
+      ('hotel-estacion-central', 'Alojamientos', 'Single ejecutiva', 210000, 'room', null, 1, 6),
+      ('hotel-estacion-central', 'Alojamientos', 'Doble estándar', 280000, 'room', null, 2, 8),
+      ('hotel-estacion-central', 'Alojamientos', 'Suite con living', 450000, 'room', null, 3, 2)
+    ) as t(negocio, grupo, nombre, precio, tipo, minutos, capacidad, unidades)
+  loop
+    select id into v_biz from tesisreserva.businesses where slug = r.negocio;
+    if v_biz is null then
+      continue;
+    end if;
+
+    insert into tesisreserva.catalog_categories (business_id, name, sort_order)
+    values (v_biz, r.grupo, 1)
+    on conflict (business_id, name) do nothing;
+
+    select id into v_cat
+      from tesisreserva.catalog_categories
+     where business_id = v_biz and name = r.grupo;
+
+    insert into tesisreserva.catalog_items
+      (business_id, category_id, name, price, item_type, duration_minutes,
+       capacity, units, sort_order)
+    values (v_biz, v_cat, r.nombre, r.precio, r.tipo, r.minutos,
+            r.capacidad, coalesce(r.unidades, 1), coalesce(r.capacidad, 1));
   end loop;
 
-  -- Lupe Café
-  insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_lupe, 'Café', 1);
-  insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_lupe, 'Brunch', 2);
-  insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_lupe, 'Pastelería', 3);
-
-  select id into v_cat from tesisreserva.catalog_categories where business_id = v_lupe and name = 'Café';
-  insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, sort_order)
-  values (v_lupe, v_cat, 'Flat white', 22000, 'product', 1);
-
-  select id into v_cat from tesisreserva.catalog_categories where business_id = v_lupe and name = 'Brunch';
-  insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, sort_order)
-  values (v_lupe, v_cat, 'Brunch Lupe', 65000, 'product', 2);
-
-  select id into v_cat from tesisreserva.catalog_categories where business_id = v_lupe and name = 'Pastelería';
-  insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, sort_order)
-  values (v_lupe, v_cat, 'Cheesecake de maracuyá', 28000, 'product', 3);
-
-  -- Barbería El Prado (servicios con duración -> definen el turno)
-  insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_prado, 'Servicios', 1);
-  select id into v_cat from tesisreserva.catalog_categories where business_id = v_prado and name = 'Servicios';
-  insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, duration_minutes, sort_order) values
-    (v_prado, v_cat, 'Corte clásico',      60000, 'service', 45, 1),
-    (v_prado, v_cat, 'Corte + barba',      90000, 'service', 60, 2),
-    (v_prado, v_cat, 'Afeitado a navaja',  50000, 'service', 30, 3);
-
-  -- Aqua Spa
-  insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_aqua, 'Masajes',  1);
-  insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_aqua, 'Spa',      2);
-  insert into tesisreserva.catalog_categories (business_id, name, sort_order) values (v_aqua, 'Faciales', 3);
-
-  select id into v_cat from tesisreserva.catalog_categories where business_id = v_aqua and name = 'Masajes';
-  insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, duration_minutes, sort_order)
-  values (v_aqua, v_cat, 'Masaje relajante 60min', 180000, 'service', 60, 1);
-
-  select id into v_cat from tesisreserva.catalog_categories where business_id = v_aqua and name = 'Spa';
-  insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, duration_minutes, sort_order)
-  values (v_aqua, v_cat, 'Circuito de aguas', 150000, 'service', 90, 2);
-
-  select id into v_cat from tesisreserva.catalog_categories where business_id = v_aqua and name = 'Faciales';
-  insert into tesisreserva.catalog_items (business_id, category_id, name, price, item_type, duration_minutes, sort_order)
-  values (v_aqua, v_cat, 'Facial hidratante', 140000, 'service', 60, 3);
+  -- Descripciones de los alojamientos: son lo que decide al huésped, así que
+  -- van cargadas y no en blanco.
+  for r in
+    select * from (values
+      ('Cabaña del Lago', 'Dos dormitorios, parrilla propia y galería con vista al agua.'),
+      ('Cabaña familiar', 'Tres dormitorios, cocina equipada y quincho para diez personas.'),
+      ('Habitación doble', 'Cama matrimonial, aire acondicionado y desayuno incluido.'),
+      ('Habitación matrimonial', 'Aire, frigobar y acceso a la pileta.'),
+      ('Habitación cuádruple', 'Dos camas dobles, ideal para familias.'),
+      ('Single ejecutiva', 'Escritorio, wifi de fibra y desayuno buffet.'),
+      ('Doble estándar', 'Dos camas individuales o una matrimonial, a elección.'),
+      ('Suite con living', 'Ambiente separado, bañera y cochera incluida.')
+    ) as t(nombre, detalle)
+  loop
+    update tesisreserva.catalog_items
+       set description = r.detalle
+     where item_type = 'room' and name = r.nombre and description is null;
+  end loop;
 
   -- ======================= promociones =======================
-  delete from tesisreserva.promotions where business_id in (v_cab, v_lupe, v_prado, v_aqua);
+  delete from tesisreserva.promotions
+   where business_id in (select id from tesisreserva.businesses where slug = any(v_slugs));
 
-  insert into tesisreserva.promotions (business_id, title, description, starts_at, ends_at, unlimited, active) values
-    (v_cab,  '2x1 en cortes premium', 'Martes y miércoles · La Cabaña',
-     now() - interval '5 days', now() + interval '30 days', false, true),
-    (v_lupe, '−20% en brunch', 'Sábados de 9 a 12 · Lupe Café',
-     now() - interval '10 days', null, true, true),
-    (v_aqua, 'Spa día completo −15%', 'Aqua Spa & Wellness',
-     now() - interval '2 days', now() + interval '15 days', false, true);
+  for r in
+    select * from (values
+      ('la-cabana', '2x1 en cortes premium', 'Martes y miércoles, sólo en el salón.', 30),
+      ('lupe-cafe', '−20% en brunch', 'Sábados de 9 a 12.', null),
+      ('bocatto-trattoria', 'Pasta + copa de vino', 'De lunes a jueves al mediodía.', 20),
+      ('aqua-spa-wellness', 'Semipermanente −15%', 'Reservando de martes a jueves.', 15),
+      ('nails-ysapy', 'Segunda mano a mitad de precio', 'Para clientas nuevas.', 45),
+      ('lavadero-autolimpio', 'Lavado + encerado por ₲ 90.000', 'Hasta fin de mes.', 25),
+      ('posada-del-rio', '3 noches al precio de 2', 'De domingo a jueves.', 60),
+      ('hotel-estacion-central', 'Desayuno gratis para dos', 'Reservando dos noches seguidas.', null)
+    ) as t(negocio, titulo, detalle, dias)
+  loop
+    insert into tesisreserva.promotions
+      (business_id, title, description, starts_at, ends_at, unlimited, active)
+    select id, r.titulo, r.detalle,
+           now() - interval '3 days',
+           case when r.dias is not null then now() + (r.dias || ' days')::interval end,
+           r.dias is null, true
+      from tesisreserva.businesses where slug = r.negocio;
+  end loop;
 
   -- ======================= perfil del cliente demo =======================
   if v_client is not null then
@@ -316,7 +445,7 @@ begin
   --
   --     npm run db:images
 
-  raise notice 'Seed completo: negocios, carta, horarios, capacidad y promos.';
+  raise notice 'Seed completo: % negocios con horarios, carta y promos.', array_length(v_slugs, 1);
   raise notice 'Faltan las imágenes (npm run db:images) y las reseñas (npm run db:reviewers).';
 end;
 $seed$;

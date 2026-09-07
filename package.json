@@ -21,7 +21,8 @@
     "db:test:owner": "node scripts/test-owner.mjs",
     "auth:probar-correo": "node scripts/probar-correo.mjs",
     "test:recordatorios": "node scripts/test-recordatorios.mjs",
-    "test:modo": "node scripts/test-modo.mjs"
+    "test:modo": "node scripts/test-modo.mjs",
+    "test:cercania": "node scripts/test-cercania.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",
