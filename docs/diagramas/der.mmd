@@ -1,0 +1,202 @@
+erDiagram
+  profiles ||--o{ businesses : "administra"
+  business_categories |o--o{ businesses : "category_id"
+  businesses ||--o{ business_hours : "business_id"
+  business_hours ||--o{ business_hour_slots : "business_hour_id"
+  businesses ||--o{ business_capacity : "business_id"
+  businesses ||--o{ promotions : "business_id"
+  businesses ||--o{ catalog_categories : "business_id"
+  businesses ||--o{ catalog_items : "business_id"
+  catalog_categories |o--o{ catalog_items : "category_id"
+  businesses ||--o{ reservations : "recibe"
+  profiles ||--o{ reservations : "hace"
+  catalog_items |o--o{ reservations : "catalog_item_id"
+  reservations ||--o{ reservation_status_history : "reservation_id"
+  profiles |o--o{ reservation_status_history : "cambia"
+  reservations ||--o{ reservation_payments : "reservation_id"
+  reservations |o--o| reviews : "reservation_id"
+  businesses ||--o{ reviews : "business_id"
+  profiles ||--o{ reviews : "escribe"
+  profiles ||--o{ notifications : "recibe"
+  profiles {
+    uuid id PK
+    text full_name
+    text email
+    text phone
+    text avatar_url
+    text role
+    text city
+    timestamptz created_at
+    timestamptz updated_at
+    bool is_owner
+  }
+  notifications {
+    uuid id PK
+    uuid user_id FK
+    text title
+    text body
+    text type
+    uuid reference_id
+    timestamptz read_at
+    timestamptz created_at
+  }
+  business_categories {
+    uuid id PK
+    text name
+    text slug UK
+    text icon
+    int sort_order
+    bool active
+    timestamptz created_at
+  }
+  businesses {
+    uuid id PK
+    uuid owner_id FK
+    uuid category_id FK
+    text name
+    text slug UK
+    text description
+    text address
+    text neighborhood
+    text city
+    float latitude
+    float longitude
+    text phone
+    text whatsapp
+    text cover_url
+    text logo_url
+    bool active
+    bool deposit_enabled
+    numeric deposit_amount
+    bool deposit_per_person
+    text reservation_type
+    int default_slot_duration_minutes
+    int slot_step_minutes
+    int max_concurrent_reservations
+    timestamptz created_at
+    timestamptz updated_at
+    text deposit_bank_name
+    text deposit_account_holder
+    text deposit_account_number
+    text deposit_document_id
+    text deposit_instructions
+  }
+  business_hours {
+    uuid id PK
+    uuid business_id FK
+    int day_of_week
+    bool enabled
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  business_hour_slots {
+    uuid id PK
+    uuid business_hour_id FK
+    time opens_at
+    time closes_at
+    int sort_order
+    timestamptz created_at
+  }
+  business_capacity {
+    uuid id PK
+    uuid business_id FK
+    int party_size
+    int quantity
+    bool active
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  promotions {
+    uuid id PK
+    uuid business_id FK
+    text title
+    text description
+    timestamptz starts_at
+    timestamptz ends_at
+    bool unlimited
+    bool active
+    text image_url
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  catalog_categories {
+    uuid id PK
+    uuid business_id FK
+    text name
+    int sort_order
+    bool active
+    timestamptz created_at
+  }
+  catalog_items {
+    uuid id PK
+    uuid business_id FK
+    uuid category_id FK
+    text name
+    text description
+    numeric price
+    text item_type
+    int duration_minutes
+    text image_url
+    bool active
+    int sort_order
+    timestamptz created_at
+    timestamptz updated_at
+    int capacity
+    int units
+  }
+  reservations {
+    uuid id PK
+    text reservation_code UK
+    uuid client_id FK
+    uuid business_id FK
+    uuid catalog_item_id FK
+    date reservation_date
+    time reservation_time
+    int party_size
+    int duration_minutes
+    text status
+    text notes
+    bool deposit_required
+    numeric deposit_amount
+    text deposit_status
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz cancelled_at
+    text cancellation_reason
+    date check_out_date
+    text deposit_proof_url
+    timestamptz deposit_proof_at
+  }
+  reservation_status_history {
+    uuid id PK
+    uuid reservation_id FK
+    text previous_status
+    text new_status
+    uuid changed_by FK
+    timestamptz created_at
+  }
+  reservation_payments {
+    uuid id PK
+    uuid reservation_id FK
+    numeric amount
+    text currency
+    text status
+    text provider
+    text provider_reference
+    timestamptz paid_at
+    timestamptz refunded_at
+    timestamptz created_at
+  }
+  reviews {
+    uuid id PK
+    uuid reservation_id FK
+    uuid business_id FK
+    uuid client_id FK
+    int rating
+    text comment
+    text owner_reply
+    timestamptz owner_replied_at
+    bool active
+    timestamptz created_at
+    timestamptz updated_at
+  }
