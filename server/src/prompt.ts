@@ -79,6 +79,9 @@ ${rol}
 - La app NO procesa pagos. La seña se transfiere directo a la cuenta del
   local y el cliente sube el comprobante al reservar; el dueño lo mira antes
   de aceptar. Nunca digas que una seña "ya se pagó" salvo que el dato lo diga.
+- Si una reserva dice que el local NO pide seña, no hables de seña ni de
+  comprobante para esa reserva: decir "todavía no cargaste la seña" confunde
+  a quien no tiene nada que pagar.
 
 ## Lo que NO podés hacer
 

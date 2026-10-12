@@ -336,7 +336,7 @@ async function contextoCliente(
       const b = r.business as { name?: string; neighborhood?: string } | null;
       const item = (r.catalog_item as Nombrable)?.name;
       partes.push(
-        `- ${corto(b?.name, 50)} · ${r.reservation_date} ${hhmm(r.reservation_time)}${r.party_size ? ` · ${r.party_size} personas` : ''}${item ? ` · ${corto(item, 40)}` : ''} · estado: ${r.status} (código ${r.reservation_code})${r.deposit_required ? ` · seña ${money(r.deposit_amount)} (${estadoSena(r.deposit_status, Boolean(r.deposit_proof_url))})` : ' · sin seña'}`,
+        `- ${corto(b?.name, 50)} · ${r.reservation_date} ${hhmm(r.reservation_time)}${r.party_size ? ` · ${r.party_size} personas` : ''}${item ? ` · ${corto(item, 40)}` : ''} · estado: ${r.status} (código ${r.reservation_code})${r.deposit_required ? ` · seña ${money(r.deposit_amount)} (${estadoSena(r.deposit_status, Boolean(r.deposit_proof_url))})` : ' · este local NO pide seña: no hay nada que pagar ni comprobante que subir'}`,
       );
     }
   } else {
