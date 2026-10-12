@@ -106,6 +106,27 @@ const SRC = 'https://d8j0ntlcm91z4.cloudfront.net/user_3EZufQH53g1was2DUGwVV5IRX
 const FOTO_PARRILLA =
   'https://images.unsplash.com/photo-1749429600130-d799b74f0a72?w=1600&q=85&fm=jpg';
 
+/**
+ * Portadas de los negocios de ejemplo que se sumaron después del prototipo.
+ * Todas de Unsplash con licencia libre; se anota la página y el autor de cada
+ * una. Se descartaron fotos con paisajes de montaña (Ñemby es llano) y con
+ * marcas comerciales a la vista.
+ */
+const PORTADAS_UNSPLASH = {
+  'nails-ysapy':            ['photo-1632345031435-8727f6897d53', 'gb6gtiTZKB8 — Giorgio Trovato'],
+  'bella-unas':             ['photo-1522337660859-02fbefca4702', 'Xf7o2W7qgP0 — Element5 Digital'],
+  'full-wash-luque':        ['photo-1607860108855-64acf2078ed9', 'eP8h7YVhFHk — Brad Starkey'],
+  'lavadero-autolimpio':    ['photo-1694678505383-676d78ea3b96', 'phP5Qa0CauQ — Nik'],
+  'barberia-guarani':       ['photo-1585747860715-2ba37e788b70', 'EW_rqoSdDes — Nathon Oski'],
+  'studio-kuna':            ['photo-1600948836101-f9ffda59d250', 'jsuWg7IXx1k — Greg Trowman'],
+  'posada-del-rio':         ['photo-1787237849351-5dcba5f478c4', 'zO3aXA0cukg — Clay Banks'],
+  'hotel-estacion-central': ['photo-1582719478250-c89cae4dc85b', '67-sOi7mVIk — Sasha Kaunas'],
+  'cabanas-del-lago':       ['photo-1767114119840-a0de4c9ae389', 'lS-5agV0HjA — Karīna Bunere'],
+  'marisqueria-costanera':  ['photo-1765100479761-2359e22fbe16', '2xd9c6jQhGs — Vitalii Kyktov'],
+  'sushi-nu':               ['photo-1648141294171-de1980517238', 'I_sG8AZFpNs — Andrea Riezzo'],
+  'bocatto-trattoria':      ['photo-1473093226795-af9932fe5856', 'ddZYOtZUnBk — Eaters Collective'],
+};
+
 const PLAN = [
   { slug: 'la-cabana',         kind: 'cover', col: 'cover_url', url: `${SRC}/hf_20260806_162411_60ccd63c-095e-4220-af88-e80bf09f59bb.png` },
   { slug: 'la-cabana',         kind: 'logo',  col: 'logo_url',  url: `${SRC}/hf_20260806_163729_5ab287ee-a179-4bc1-b26f-392d5e25fbb9.png` },
@@ -113,6 +134,12 @@ const PLAN = [
   { slug: 'barberia-el-prado', kind: 'cover', col: 'cover_url', url: `${SRC}/hf_20260806_162411_fce3e21f-3631-488f-a6e3-b90655524e8b.png` },
   { slug: 'aqua-spa-wellness', kind: 'cover', col: 'cover_url', url: `${SRC}/hf_20260806_162411_897493e5-415d-442f-ab52-02b1a7bd5f07.png` },
   { slug: 'parrilla-don-aldo', kind: 'cover', col: 'cover_url', url: FOTO_PARRILLA },
+  ...Object.entries(PORTADAS_UNSPLASH).map(([slug, [foto]]) => ({
+    slug,
+    kind: 'cover',
+    col: 'cover_url',
+    url: `https://images.unsplash.com/${foto}?w=1600&q=85&fm=jpg`,
+  })),
 ];
 
 /** Portadas a 1200px (cubre pantallas 3x); logos a 320px. */
