@@ -51,6 +51,14 @@ export function HelpBubble() {
     ? 'owner'
     : 'client';
 
+  /**
+   * En la ficha de un negocio y en sus pasos (reservar, reseñar) el botón no
+   * aparece. Esas pantallas terminan en un botón principal que ocupa todo el
+   * ancho, y la burbuja quedaba encima de su borde derecho: justo sobre
+   * "Reservar" y "Confirmar reserva". Ahí la persona ya sabe qué quiere hacer.
+   */
+  const ocultarBoton = /^\/app\/negocio\//.test(location.pathname);
+
   // Cada mensaje nuevo lleva la vista al final.
   useEffect(() => {
     finRef.current?.scrollIntoView({ block: 'end' });
@@ -119,6 +127,12 @@ export function HelpBubble() {
 
   return (
     <>
+      {/* Lugar para el botón al final del contenido. El botón flota fijo, así
+          que lo último de cada pantalla ("Gestionar", la última tarjeta)
+          quedaba debajo de él sin forma de correrlo. Con este espacio, al
+          bajar hasta el fondo todo termina por encima. */}
+      {!ocultarBoton && <div aria-hidden style={{ height: 72, flexShrink: 0 }} />}
+
       {/* Botón flotante */}
       <button
         onClick={() => setAbierto(true)}
@@ -133,7 +147,7 @@ export function HelpBubble() {
           borderRadius: '50%',
           background: C.terracotta,
           boxShadow: '0 8px 22px rgba(169,103,76,.45)',
-          display: abierto ? 'none' : 'flex',
+          display: abierto || ocultarBoton ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -297,7 +311,7 @@ export function HelpBubble() {
                       wordBreak: 'break-word',
                     }}
                   >
-                    {m.content ||
+                    {(m.role === 'assistant' ? <TextoConFormato texto={m.content} /> : m.content) ||
                       (pensando && i === mensajes.length - 1 ? (
                         <span
                           style={{
@@ -401,6 +415,45 @@ export function HelpBubble() {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+/**
+ * El modelo escribe en markdown aunque se le pida texto plano: negritas con
+ * `**` y listas con guiones. Mostrado tal cual, el chat quedaba lleno de
+ * asteriscos sueltos.
+ *
+ * Se arma con elementos de React y no con innerHTML: el texto viene de un
+ * modelo que lee datos escritos por otros usuarios, y así nada de lo que
+ * diga puede terminar interpretado como HTML.
+ */
+function TextoConFormato({ texto }: { texto: string }) {
+  if (!texto) return null;
+
+  const lineas = texto.split('\n').map((linea) =>
+    // "- algo" o "* algo" al principio de la línea es un ítem de lista.
+    linea.replace(/^(\s*)[-*]\s+/, '$1• '),
+  );
+
+  return (
+    <>
+      {lineas.map((linea, i) => (
+        <span key={i}>
+          {i > 0 && '\n'}
+          {linea
+            // Mientras llega por partes puede haber un ** sin cerrar todavía:
+            // se separa por pares y lo que queda impar se muestra sin los **.
+            .split(/(\*\*[^*]+\*\*)/g)
+            .map((trozo, j) =>
+              trozo.startsWith('**') && trozo.endsWith('**') && trozo.length > 4 ? (
+                <strong key={j}>{trozo.slice(2, -2)}</strong>
+              ) : (
+                trozo.replace(/\*\*/g, '')
+              ),
+            )}
+        </span>
+      ))}
     </>
   );
 }
