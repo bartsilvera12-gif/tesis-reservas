@@ -104,7 +104,7 @@ const MARGEN_CAJA = 1.02;
 export function cajaDeBusqueda(centro: Coords, radiusKm: number) {
   const dLat = (radiusKm * MARGEN_CAJA) / KM_POR_GRADO_LAT;
   // Los meridianos se juntan hacia los polos: un grado de longitud mide menos
-  // cuanto más lejos del ecuador. Sin esto, en Asunción la caja quedaría un
+  // cuanto más lejos del ecuador. Sin esto, en Ñemby la caja quedaría un
   // 10% angosta y se perderían locales del borde este y oeste.
   const dLng = dLat / Math.max(Math.cos((centro.lat * Math.PI) / 180), 0.01);
 

@@ -119,7 +119,7 @@ try {
        (owner_id, category_id, name, slug, city, reservation_type,
         default_slot_duration_minutes, slot_step_minutes, deposit_enabled,
         deposit_amount, deposit_per_person, active, latitude, longitude)
-     values ($1,$2,'Test Resto','test-resto','Asunción','table',90,30,true,50000,true,true,-25.29,-57.57)
+     values ($1,$2,'Test Resto','test-resto','Ñemby','table',90,30,true,50000,true,true,-25.3925,-57.5471)
      returning id`, [owner, cat])).rows[0].id;
   ok('el dueño creó su negocio', Boolean(biz));
 

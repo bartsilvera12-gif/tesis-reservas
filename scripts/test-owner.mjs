@@ -131,7 +131,7 @@ try {
         `insert into tesisreserva.businesses
            (owner_id, category_id, name, slug, city, reservation_type,
             default_slot_duration_minutes, slot_step_minutes, active, latitude, longitude)
-         values ($1,$2,$3,$4,'Asunción','table',90,30,true,-25.29,-57.57)
+         values ($1,$2,$3,$4,'Ñemby','table',90,30,true,-25.3925,-57.5471)
          returning id`,
         [owner, cat, name, slug],
       )
@@ -558,7 +558,7 @@ try {
     `insert into tesisreserva.businesses (owner_id, category_id, name, slug, city,
        reservation_type, default_slot_duration_minutes, slot_step_minutes, active,
        latitude, longitude)
-     values ($1,$2,'Lo de Karen','lo-de-karen','Asuncion','table',60,30,true,-25.3,-57.6)
+     values ($1,$2,'Lo de Karen','lo-de-karen','Ñemby','table',60,30,true,-25.39,-57.545)
      returning id`,
     [cliente, cat],
   );
@@ -597,7 +597,7 @@ try {
       `insert into tesisreserva.businesses (owner_id, category_id, name, slug, city,
          reservation_type, default_slot_duration_minutes, slot_step_minutes, active,
          max_concurrent_reservations, latitude, longitude)
-       values ($1,$2,$3,$4,'Asuncion',$5,60,30,true,2,-25.3,-57.6) returning id`,
+       values ($1,$2,$3,$4,'Ñemby',$5,60,30,true,2,-25.39,-57.545) returning id`,
       [duenio, cats[slug], nombre, nombre.toLowerCase().replace(/ /g,'-')+'-t', tipo])).rows[0].id;
     for (let d = 0; d < 7; d++) {
       const h = (await c.query(
@@ -816,7 +816,7 @@ try {
     `insert into tesisreserva.businesses (owner_id, category_id, name, slug, city,
        reservation_type, default_slot_duration_minutes, slot_step_minutes, active,
        latitude, longitude)
-     values ($1,$2,'Lo de Karen 2','lo-de-karen-2','Asuncion','table',60,30,true,-25.31,-57.61)
+     values ($1,$2,'Lo de Karen 2','lo-de-karen-2','Ñemby','table',60,30,true,-25.395,-57.55)
      returning id`,
     [cliente, cat],
   );

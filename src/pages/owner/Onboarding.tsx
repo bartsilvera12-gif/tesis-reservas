@@ -13,9 +13,10 @@ import {
   updateBusiness,
 } from '@/services/businesses';
 import { uploadBusinessImage } from '@/services/storage';
-import { Button, Field, Loading, Spinner, Stepper } from '@/components/ui';
+import { Button, Chip, Field, Loading, Spinner, Stepper } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
 import { guardarModo } from '@/lib/modo';
+import { BARRIOS, CIUDAD, NEMBY_CENTRO, dentroDeNemby } from '@/lib/nemby';
 import { dayShort, slugify } from '@/lib/format';
 import { rubroDe, tamanosIniciales } from '@/lib/rubros';
 import { ErrorImagen, LADO_LOGO, LADO_PORTADA, prepararImagen } from '@/lib/image';
@@ -33,11 +34,15 @@ const MapView = lazy(() =>
 );
 
 /**
- * Posición inicial del pin en el selector de ubicación (centro de Asunción).
+ * Posición inicial del pin en el selector de ubicación (centro de Ñemby).
  * No es el dato de ningún negocio: es sólo desde dónde arranca a arrastrar
  * el dueño, que después queda guardado en businesses.latitude/longitude.
+ *
+ * Antes arrancaba en Villa Morra, en Asunción, y quien no movía el pin
+ * guardaba su negocio ahí aunque estuviera en otra ciudad. Ahora además
+ * elegir el barrio lo lleva hasta ese barrio.
  */
-const DEFAULT_CENTER = { lat: -25.2967, lng: -57.5759 };
+const DEFAULT_CENTER = NEMBY_CENTRO;
 
 const STEPS = ['Tu negocio', 'Ubicación', 'Reservas'] as const;
 
@@ -67,7 +72,8 @@ export function OwnerOnboarding() {
   // Paso 2
   const [address, setAddress] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
-  const [city, setCity] = useState('Asunción');
+  // La app es para los negocios de Ñemby: la ciudad no se elige.
+  const city = CIUDAD;
   const [coords, setCoords] = useState(DEFAULT_CENTER);
 
   // Paso 3
@@ -105,7 +111,9 @@ export function OwnerOnboarding() {
     }
     if (step === 1) {
       if (!address.trim()) return setError('Escribí la dirección.');
-      if (!city.trim()) return setError('Escribí la ciudad.');
+      if (!dentroDeNemby(coords)) {
+        return setError(`La ubicación tiene que quedar dentro de ${CIUDAD}. Tocá el mapa para moverla.`);
+      }
     }
 
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
@@ -358,22 +366,38 @@ export function OwnerOnboarding() {
           <>
             <Field
               label="Dirección"
-              placeholder="Av. Mcal. López 1234"
+              placeholder="Calle y número"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
             />
-            <Field
-              label="Barrio / Zona"
-              placeholder="Villa Morra"
-              value={neighborhood}
-              onChange={(e) => setNeighborhood(e.target.value)}
-            />
-            <Field
-              label="Ciudad"
-              placeholder="Asunción"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-            />
+
+            <div>
+              <Field
+                label="Barrio"
+                placeholder="Pa'i Ñu"
+                value={neighborhood}
+                onChange={(e) => setNeighborhood(e.target.value)}
+              />
+              {/* Tocar un barrio lo escribe y lleva el pin hasta ahí: el dueño
+                  sólo tiene que ajustarlo a su cuadra. */}
+              <div className="hscroll" style={{ marginTop: 8 }}>
+                {BARRIOS.map((b) => (
+                  <Chip
+                    key={b.nombre}
+                    label={b.nombre}
+                    active={neighborhood === b.nombre}
+                    onClick={() => {
+                      setNeighborhood(b.nombre);
+                      setCoords({ lat: b.lat, lng: b.lng });
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.45 }}>
+              Ciudad: <strong style={{ color: C.ink }}>{CIUDAD}</strong>
+            </div>
 
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
@@ -847,6 +871,7 @@ function UseMyLocation({
 }) {
   const [busy, setBusy] = useState(false);
   const [denied, setDenied] = useState(false);
+  const [fuera, setFuera] = useState(false);
 
   return (
     <div style={{ marginTop: 8 }}>
@@ -854,10 +879,18 @@ function UseMyLocation({
         onClick={() => {
           setBusy(true);
           setDenied(false);
+          setFuera(false);
           navigator.geolocation?.getCurrentPosition(
             (pos) => {
-              onChange({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+              const aca = { lat: pos.coords.latitude, lng: pos.coords.longitude };
               setBusy(false);
+              // Cargando el negocio desde la casa, en otra ciudad, el pin se
+              // iría afuera del mapa. Mejor decirlo que moverlo a ciegas.
+              if (!dentroDeNemby(aca)) {
+                setFuera(true);
+                return;
+              }
+              onChange(aca);
             },
             () => {
               setDenied(true);
@@ -881,6 +914,11 @@ function UseMyLocation({
       {denied && (
         <div style={{ fontSize: 12, color: C.sub, marginTop: 5 }}>
           No pudimos obtener tu ubicación. Podés moverla a mano.
+        </div>
+      )}
+      {fuera && (
+        <div style={{ fontSize: 12, color: C.sub, marginTop: 5 }}>
+          Ahora estás fuera de {CIUDAD}. Elegí el barrio o tocá el mapa donde está tu negocio.
         </div>
       )}
     </div>

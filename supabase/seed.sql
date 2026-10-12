@@ -1,10 +1,11 @@
 -- ============================================================================
 --  Datos de ejemplo del schema `tesisreserva`
 --  ---------------------------------------------------------------------------
---  Negocios demo repartidos por los cinco rubros y por distintos barrios del
---  Gran Asunción. Están a distancias muy diferentes a propósito: sirve para
---  ver funcionando el filtro de "cerca mío" del mapa, que con todos los pines
---  en la misma cuadra no se podría probar.
+--  Negocios demo repartidos por los cinco rubros y por los barrios de Ñemby,
+--  que es la ciudad que delimita el trabajo. Cada uno está en un barrio y una
+--  calle reales (tomados de OpenStreetMap), y separados entre sí a propósito:
+--  sirve para ver funcionando el filtro de "cerca mío" del mapa, que con
+--  todos los pines en la misma cuadra no se podría probar.
 --
 --  Está escrito con listas y bucles, no con un bloque por negocio: agregar
 --  otro local es sumar una fila, y así el seed no se vuelve impagable a medida
@@ -76,7 +77,7 @@ begin
   end if;
 
   insert into tesisreserva.profiles (id, full_name, email, role, city, is_owner)
-  values (v_owner, 'Dueño Demo', 'demo.owner@tesisreserva.py', 'owner', 'Asunción', true)
+  values (v_owner, 'Dueño Demo', 'demo.owner@tesisreserva.py', 'owner', 'Ñemby', true)
   on conflict (id) do update set role = 'owner', is_owner = true;
 
   -- ======================= negocios =======================
@@ -90,82 +91,82 @@ begin
       -- abre, cierra, turno partido
       ('la-cabana', 'La Cabaña', 'restaurantes',
        'Parrilla y cocina paraguaya en un quincho de madera. Cortes premium, ambiente familiar y música en vivo los viernes.',
-       'Av. Mcal. López 1234', 'Villa Morra', 'Asunción', -25.2967, -57.5762,
+       '9 de Agosto 1240', 'Centro', 'Ñemby', -25.39336, -57.5464,
        '+595 21 600 100', true, 50000, true, 1, '11:30', '23:00', true),
 
       ('lupe-cafe', 'Lupe Café', 'restaurantes',
        'Café de especialidad, brunch de fin de semana y pastelería propia.',
-       'Av. España 850', 'Carmelitas', 'Asunción', -25.2839, -57.5671,
+       'Bernardino Caballero 856', 'San Carlos', 'Ñemby', -25.3878, -57.5421,
        '+595 21 600 200', false, 0, false, -1, '08:00', '20:00', false),
 
       ('bocatto-trattoria', 'Bocatto Trattoria', 'restaurantes',
        'Pastas caseras y pizza a la piedra. Carta de vinos y mesas en el patio.',
-       'Senador Long 780', 'Las Mercedes', 'Asunción', -25.2921, -57.5904,
+       'Moises Bertoni 780', 'Pa''i Ñu', 'Ñemby', -25.37742, -57.5442,
        '+595 21 600 500', true, 40000, false, 1, '11:30', '23:00', true),
 
-      ('marisqueria-costanera', 'Marisquería Costanera', 'restaurantes',
-       'Pescados de río y mariscos frescos, con vista a la bahía.',
-       'Av. Costanera 210', 'Sajonia', 'Asunción', -25.3084, -57.6271,
+      ('marisqueria-costanera', 'Marisquería del Sur', 'restaurantes',
+       'Pescados de río y mariscos frescos, en un salón familiar con patio.',
+       'Padre Trujillo 215', 'Pa''i Ñu', 'Ñemby', -25.3681, -57.5486,
        '+595 21 600 600', true, 60000, true, 1, '11:00', '22:30', false),
 
       ('sushi-nu', 'Sushi Ñu', 'restaurantes',
        'Barra de sushi y rolls de autor. Pedidos para llevar y salón chico.',
-       'Ruta Mcal. Estigarribia 3400', 'Centro', 'San Lorenzo', -25.3402, -57.5098,
+       'Toribio Pereira 340', 'Los Naranjos', 'Ñemby', -25.3985, -57.5406,
        '+595 21 600 700', false, 0, false, 0, '18:00', '23:30', false),
 
       ('barberia-el-prado', 'Barbería El Prado', 'peluquerias',
        'Cortes clásicos y modernos, afeitado a navaja y atención con turno puntual.',
-       'Palma 450', 'Centro', 'Asunción', -25.2864, -57.6369,
+       'Acceso Sur 450', 'Los Naranjos', 'Ñemby', -25.39498, -57.54411,
        '+595 21 600 300', false, 0, false, 0, '09:00', '19:00', false),
 
       ('studio-kuna', 'Studio Kuña', 'peluquerias',
        'Color, alisados y peinados para eventos. Turnos de mañana y tarde.',
-       'Charles de Gaulle 1120', 'Villa Morra', 'Asunción', -25.2989, -57.5731,
+       'Luis A. del Paraná 1120', 'Villa Anita', 'Ñemby', -25.37, -57.5643,
        '+595 21 600 800', true, 30000, false, 0, '09:00', '20:00', false),
 
       ('barberia-guarani', 'Barbería Guaraní', 'peluquerias',
        'Barbería de barrio, atención rápida y precios accesibles.',
-       'Cacique Lambaré 640', 'Centro', 'Lambaré', -25.3437, -57.6062,
+       '16 de Agosto 640', '3 de Mayo', 'Ñemby', -25.4091, -57.5439,
        '+595 21 600 900', false, 0, false, 0, '08:30', '19:00', false),
 
       ('aqua-spa-wellness', 'Aqua Spa & Wellness', 'spa-de-unas',
        'Manicura, pedicura, esmaltado semipermanente y tratamientos de manos.',
-       'Denis Roa 1500', 'Recoleta', 'Asunción', -25.3052, -57.5858,
+       'Santa Cecilia 1500', 'Mbokajaty', 'Ñemby', -25.3838, -57.5615,
        '+595 21 600 400', true, 100000, false, 1, '10:00', '20:00', false),
 
       ('nails-ysapy', 'Nails Studio Ysapy', 'spa-de-unas',
        'Uñas esculpidas, kapping y nail art. Trabajamos con turno reservado.',
-       'Malutín 470', 'Carmelitas', 'Asunción', -25.2852, -57.5694,
+       'Teniente Zacarías Rivas 470', 'Vista Alegre', 'Ñemby', -25.4033, -57.5455,
        '+595 21 601 000', true, 40000, false, 0, '09:00', '19:00', false),
 
       ('bella-unas', 'Bella Uñas', 'spa-de-unas',
        'Semipermanente, pedicura spa y retirado de gel.',
-       'Ruta Mcal. Estigarribia 1180', 'Centro', 'Fernando de la Mora', -25.3215, -57.5402,
+       '1 de Mayo 1180', 'Pa''i Ñu', 'Ñemby', -25.37562, -57.54629,
        '+595 21 601 100', false, 0, false, 0, '09:00', '18:30', false),
 
       ('lavadero-autolimpio', 'Lavadero Autolimpio', 'lavaderos',
        'Lavado completo, encerado y limpieza de tapizados. Sala de espera con wifi.',
-       'Av. Molas López 2300', 'Mburucuyá', 'Asunción', -25.3176, -57.5623,
+       'Coronel San Patricio 2300', 'Caaguazú', 'Ñemby', -25.4085, -57.5277,
        '+595 21 601 200', false, 0, false, 0, '07:30', '18:00', false),
 
       ('full-wash-luque', 'Full Wash', 'lavaderos',
        'Lavado a mano y pulido de faros. Atención mientras esperás.',
-       'Av. Aviadores del Chaco 4100', 'Centro', 'Luque', -25.2673, -57.4869,
+       'De la Victoria 410', 'Rincón', 'Ñemby', -25.3921, -57.5251,
        '+595 21 601 300', false, 0, false, -1, '07:00', '19:00', false),
 
-      ('cabanas-del-lago', 'Cabañas del Lago', 'hospedajes',
-       'Cabañas de madera frente al lago, con parrilla y desayuno incluido.',
-       'Ruta Luque - Areguá km 28', 'Costanera', 'Areguá', -25.3100, -57.3900,
+      ('cabanas-del-lago', 'Cabañas Cañadita', 'hospedajes',
+       'Cabañas de madera rodeadas de verde, con parrilla y desayuno incluido.',
+       'Eusebio Pintos 950', 'Cañadita', 'Ñemby', -25.42825, -57.5283,
        '+595 21 601 400', true, 150000, false, -1, '08:00', '20:00', false),
 
       ('posada-del-rio', 'Posada del Río', 'hospedajes',
        'Posada familiar con pileta y estacionamiento. A diez minutos del centro.',
-       'Ruta Ñemby 950', 'Centro', 'Ñemby', -25.3934, -57.5362,
+       'La Lomita 950', 'Rincón', 'Ñemby', -25.3939, -57.52759,
        '+595 21 601 500', true, 100000, false, -1, '08:00', '21:00', false),
 
-      ('hotel-estacion-central', 'Hotel Estación Central', 'hospedajes',
-       'Hotel céntrico a dos cuadras de la Estación. Desayuno buffet y cochera.',
-       'Eligio Ayala 620', 'Centro', 'Asunción', -25.2828, -57.6335,
+      ('hotel-estacion-central', 'Hotel Ñemby Central', 'hospedajes',
+       'Hotel céntrico a pocas cuadras de la plaza. Desayuno buffet y cochera.',
+       'Capitán Juan Genaro Lafranconi 620', 'San Carlos', 'Ñemby', -25.39255, -57.54431,
        '+595 21 601 600', true, 120000, false, -1, '00:00', '23:59', false)
     ) as t(slug, nombre, rubro, descripcion, direccion, barrio, ciudad, lat, lng,
            tel, sena, monto, por_persona, cerrado, abre, cierra, partido)
@@ -352,7 +353,7 @@ begin
       ('full-wash-luque', 'Servicios', 'Pulido de faros', 90000, 'service', 60, null, null),
 
       -- Los alojamientos llevan capacidad y cuántas unidades iguales hay.
-      ('cabanas-del-lago', 'Alojamientos', 'Cabaña del Lago', 350000, 'room', null, 4, 2),
+      ('cabanas-del-lago', 'Alojamientos', 'Cabaña con galería', 350000, 'room', null, 4, 2),
       ('cabanas-del-lago', 'Alojamientos', 'Cabaña familiar', 500000, 'room', null, 6, 1),
       ('cabanas-del-lago', 'Alojamientos', 'Habitación doble', 220000, 'room', null, 2, 3),
 
@@ -431,7 +432,7 @@ begin
   -- ======================= perfil del cliente demo =======================
   if v_client is not null then
     insert into tesisreserva.profiles (id, full_name, email, role, city)
-    values (v_client, 'Cliente Demo', 'demo.client@tesisreserva.py', 'client', 'Asunción')
+    values (v_client, 'Cliente Demo', 'demo.client@tesisreserva.py', 'client', 'Ñemby')
     on conflict (id) do nothing;
   end if;
 

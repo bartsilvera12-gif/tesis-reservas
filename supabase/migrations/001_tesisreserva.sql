@@ -203,7 +203,7 @@ create table if not exists tesisreserva.businesses (
   description                   text,
   address                       text,
   neighborhood                  text,
-  city                          text        not null default 'Asunción',
+  city                          text        not null default 'Ñemby',
   latitude                      double precision,
   longitude                     double precision,
   phone                         text,
@@ -1066,10 +1066,17 @@ create policy notifications_update on tesisreserva.notifications
 -- ---------------------------------------------------------------------------
 --  Disponibilidad de horarios para un negocio / fecha / tamaño de grupo
 -- ---------------------------------------------------------------------------
+-- Suma el servicio elegido: los turnos se calculaban con la duración general
+-- del local y un servicio largo aparecía disponible hasta el cierre, para
+-- después rechazarse al confirmar. La firma vieja se borra para que PostgREST
+-- no tenga dos funciones con el mismo nombre entre las que dudar.
+drop function if exists tesisreserva.get_availability(uuid, date, int);
+
 create or replace function tesisreserva.get_availability(
-  p_business_id uuid,
-  p_date        date,
-  p_party_size  int default null
+  p_business_id     uuid,
+  p_date            date,
+  p_party_size      int  default null,
+  p_catalog_item_id uuid default null
 )
 returns table (
   slot_time time,
@@ -1085,11 +1092,24 @@ declare
   v_biz      tesisreserva.businesses%rowtype;
   v_dow      int;
   v_capacity int;
+  v_duration int;
 begin
   select * into v_biz from tesisreserva.businesses where id = p_business_id and active;
   if not found then
     return;
   end if;
+
+  -- La misma duración que va a usar create_reservation al confirmar: la del
+  -- servicio si se eligió uno, y si no la general del local. Si acá se usara
+  -- otra, la lista ofrecería turnos que después se rechazan.
+  select coalesce(
+           (select i.duration_minutes
+              from tesisreserva.catalog_items i
+             where i.id = p_catalog_item_id
+               and i.business_id = p_business_id
+               and i.active),
+           v_biz.default_slot_duration_minutes)
+    into v_duration;
 
   v_dow := extract(dow from p_date)::int;   -- 0 = domingo
 
@@ -1119,7 +1139,7 @@ begin
     join tesisreserva.business_hour_slots hs on hs.business_hour_id = h.id
     cross join lateral generate_series(
       (p_date + hs.opens_at),
-      (p_date + hs.closes_at) - make_interval(mins => v_biz.default_slot_duration_minutes),
+      (p_date + hs.closes_at) - make_interval(mins => v_duration),
       make_interval(mins => v_biz.slot_step_minutes)
     ) as gs
     where h.business_id = p_business_id
@@ -1135,7 +1155,7 @@ begin
      and r.status in ('pending', 'confirmed')
      and (p_party_size is null or v_biz.reservation_type <> 'table' or r.party_size = p_party_size)
      -- solapamiento de intervalos [inicio, inicio + duración)
-     and (p_date + s.t, (p_date + s.t) + make_interval(mins => v_biz.default_slot_duration_minutes))
+     and (p_date + s.t, (p_date + s.t) + make_interval(mins => v_duration))
          overlaps
          (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes))
     group by s.t
@@ -1904,7 +1924,7 @@ begin
     coalesce(new.raw_user_meta_data ->> 'full_name', ''),
     new.email,
     new.raw_user_meta_data ->> 'phone',
-    coalesce(nullif(new.raw_user_meta_data ->> 'city', ''), 'Asunción'),
+    coalesce(nullif(new.raw_user_meta_data ->> 'city', ''), 'Ñemby'),
     v_role,
     -- Quien se registra como dueño arranca con el modo negocio ya activado.
     -- Quien se registra como cliente puede activarlo después sin otra cuenta.
@@ -1976,7 +1996,7 @@ grant select                 on tesisreserva.reservation_payments       to authe
 grant select, update         on tesisreserva.notifications              to authenticated;
 
 -- RPC
-grant execute on function tesisreserva.get_availability(uuid, date, int)                        to anon, authenticated;
+grant execute on function tesisreserva.get_availability(uuid, date, int, uuid)                  to anon, authenticated;
 grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date, text) to authenticated;
 grant execute on function tesisreserva.set_reservation_status(uuid, text, text)                 to authenticated;
 grant execute on function tesisreserva.reply_to_review(uuid, text)                              to authenticated;
@@ -2180,5 +2200,46 @@ insert into tesisreserva.business_categories (name, slug) values
   ('Hospedajes',    'hospedajes'),
   ('Spa de uñas',   'spa-de-unas')
 on conflict (slug) do update set name = excluded.name;
+
+-- ============================================================================
+--  DELIMITACIÓN: ÑEMBY
+-- ============================================================================
+
+-- El trabajo se acota a la ciudad de Ñemby, y la app sólo muestra ese mapa.
+-- La app ya no deja poner un local afuera, pero la regla vive también acá:
+-- un negocio guardado fuera de la ciudad quedaría invisible en el mapa sin
+-- que nada avise.
+--
+-- Es el rectángulo que contiene al distrito (límite administrativo de
+-- OpenStreetMap, relación 6601487) con unos metros de margen. El contorno
+-- exacto lo controla la app; acá alcanza con descartar lo que está claramente
+-- en otra ciudad.
+--
+-- NOT VALID: se aplica a todo lo que se cree o modifique desde ahora sin
+-- revisar lo que ya había. Así la migración corre igual sobre una base vieja;
+-- `validate constraint` se ejecuta aparte, una vez movidos los datos.
+-- `create table if not exists` no toca una tabla que ya existe: el default
+-- nuevo se aplica aparte.
+alter table tesisreserva.businesses alter column city set default 'Ñemby';
+
+alter table tesisreserva.businesses drop constraint if exists businesses_en_nemby;
+alter table tesisreserva.businesses
+  add constraint businesses_en_nemby check (
+    latitude is null or longitude is null or (
+      latitude  between -25.4440 and -25.3605 and
+      longitude between -57.5725 and -57.5055
+    )
+  ) not valid;
+
+-- Si lo que ya está guardado cumple, la regla queda validada del todo. Si
+-- queda algún negocio afuera, se avisa y la migración sigue: lo nuevo ya
+-- está protegido igual.
+do $$
+begin
+  alter table tesisreserva.businesses validate constraint businesses_en_nemby;
+exception when check_violation then
+  raise notice 'Hay negocios fuera de Ñemby: la regla rige sólo para lo nuevo.';
+end;
+$$;
 
 notify pgrst, 'reload schema';

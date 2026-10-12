@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useGeolocation } from '@/hooks/useGeolocation';
+import { CIUDAD } from '@/lib/nemby';
 import { fetchBusinesses } from '@/services/businesses';
 import { fetchActivePromotions } from '@/services/promotions';
 import { supabase } from '@/lib/supabase';
@@ -96,7 +97,8 @@ export function Home() {
             <path d={ICONS.location} fill={C.terracottaDark} />
           </svg>
           <span style={{ fontSize: 13, fontWeight: 600, color: C.terracottaDark }}>
-            {profile?.city || 'Asunción'}
+            {/* La app reúne los negocios de Ñemby: es la ciudad que se muestra. */}
+            {CIUDAD}
           </span>
         </div>
       </div>

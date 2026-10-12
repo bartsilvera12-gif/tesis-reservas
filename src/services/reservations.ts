@@ -22,11 +22,17 @@ export async function fetchAvailability(
   businessId: string,
   date: string,
   partySize: number | null,
+  /**
+   * El servicio elegido. Con él, los turnos se calculan con SU duración: un
+   * color de dos horas no puede empezar media hora antes del cierre.
+   */
+  catalogItemId: string | null = null,
 ): Promise<AvailabilitySlot[]> {
   const { data, error } = await supabase.rpc('get_availability', {
     p_business_id: businessId,
     p_date: date,
     p_party_size: partySize,
+    p_catalog_item_id: catalogItemId,
   });
 
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar los horarios.'));

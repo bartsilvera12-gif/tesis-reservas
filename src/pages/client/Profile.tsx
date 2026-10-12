@@ -380,7 +380,7 @@ export function Profile() {
           />
           <Field
             label="Ciudad"
-            placeholder="Asunción"
+            placeholder="Ñemby"
             value={city}
             onChange={(e) => setCity(e.target.value)}
           />

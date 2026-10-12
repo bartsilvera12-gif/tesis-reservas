@@ -23,7 +23,8 @@
     "test:recordatorios": "node scripts/test-recordatorios.mjs",
     "test:modo": "node scripts/test-modo.mjs",
     "test:cercania": "node scripts/test-cercania.mjs",
-    "docs:der": "node scripts/generar-der.mjs"
+    "docs:der": "node scripts/generar-der.mjs",
+    "test:nemby": "node scripts/test-nemby.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",

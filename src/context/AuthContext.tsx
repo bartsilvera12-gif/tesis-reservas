@@ -11,6 +11,7 @@ import {
 import type { Session } from '@supabase/supabase-js';
 import { supabase, friendlyError } from '@/lib/supabase';
 import { limpiarRecordatorios } from '@/services/recordatorios';
+import { CIUDAD } from '@/lib/nemby';
 import type { Profile, UserRole } from '@/types/db';
 
 /**
@@ -154,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role,
           // Quien se registró como dueño arranca con el modo negocio puesto.
           is_owner: role === 'owner',
-          city: typeof meta.city === 'string' && meta.city ? meta.city : 'Asunción',
+          city: typeof meta.city === 'string' && meta.city ? meta.city : CIUDAD,
         },
         { onConflict: 'id' },
       )
@@ -253,7 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             full_name: fullName.trim(),
             // El rol se elige UNA sola vez, en el registro.
             role,
-            city: 'Asunción',
+            city: CIUDAD,
           },
         },
       });

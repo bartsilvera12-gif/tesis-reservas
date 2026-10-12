@@ -1,10 +1,20 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { C } from '@/lib/theme';
 import { distanceLabel } from '@/lib/format';
 import type { BusinessWithMeta } from '@/types/db';
 import type { Coords } from '@/services/businesses';
+import { NEMBY_CENTRO, NEMBY_CONTORNO, NEMBY_LIMITES, dentroDeNemby } from '@/lib/nemby';
+
+/**
+ * Cuánto se puede mirar más allá del límite de Ñemby, en grados (~1,3 km).
+ *
+ * Sin nada de margen, los locales del borde quedaban pegados al canto del
+ * mapa y su globo se cortaba. Con mucho, se volvía a ver medio Gran
+ * Asunción, que es justo lo que se quiere evitar.
+ */
+const MARGEN_LIMITE = 0.012;
 
 /**
  * Mapa de negocios.
@@ -47,9 +57,19 @@ export function MapView({
 
   const didFit = useRef(false);
 
+  /** Aviso corto cuando se toca fuera de Ñemby en el selector de ubicación. */
+  const [aviso, setAviso] = useState<string | null>(null);
+  const avisoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Creación del mapa (una sola vez).
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+
+    const [[sur, oeste], [norte, este]] = NEMBY_LIMITES;
+    const limites = L.latLngBounds(
+      [sur - MARGEN_LIMITE, oeste - MARGEN_LIMITE],
+      [norte + MARGEN_LIMITE, este + MARGEN_LIMITE],
+    );
 
     const map = L.map(containerRef.current, {
       scrollWheelZoom: false,
@@ -60,20 +80,62 @@ export function MapView({
       // la mitad del mapa: se veía más ciudad de la que se pidió, que es
       // justo lo que se quería evitar.
       zoomSnap: 0.25,
-      // Encuadre inicial sobre Asunción sólo para que el mapa no arranque en
-      // el océano; apenas llegan los negocios se reencuadra con fitBounds().
-    }).setView([-25.292, -57.6], 13);
+      // El mapa no sale de Ñemby: es la ciudad que delimita el trabajo. Con
+      // viscosidad 1 el borde es firme; menos, deja arrastrar afuera y vuelve.
+      maxBounds: limites,
+      maxBoundsViscosity: 1,
+      // Arranca en el centro de Ñemby; apenas llegan los negocios se
+      // reencuadra con fitBounds().
+    }).setView([NEMBY_CENTRO.lat, NEMBY_CENTRO.lng], 14);
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
       maxZoom: 19,
     }).addTo(map);
 
+    /**
+     * Lo que no es Ñemby queda velado y el límite marcado.
+     *
+     * Es un polígono con agujero: el exterior cubre de sobra todo lo que el
+     * mapa deja ver, y el agujero es el distrito. Así se entiende por qué el
+     * mapa no deja ir más allá, en vez de sentirlo como una traba.
+     */
+    const exterior: L.LatLngTuple[] = [
+      [sur - 1, oeste - 1],
+      [sur - 1, este + 1],
+      [norte + 1, este + 1],
+      [norte + 1, oeste - 1],
+    ];
+    L.polygon([exterior, NEMBY_CONTORNO], {
+      stroke: false,
+      fillColor: C.bgDeep,
+      fillOpacity: 0.78,
+      interactive: false,
+    }).addTo(map);
+    L.polygon(NEMBY_CONTORNO, {
+      color: C.terracottaDark,
+      weight: 2,
+      opacity: 0.7,
+      dashArray: '6 5',
+      fill: false,
+      interactive: false,
+    }).addTo(map);
+
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
     map.on('click', (e: L.LeafletMouseEvent) => {
-      onMapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+      if (!onMapClickRef.current) return;
+      const punto = { lat: e.latlng.lat, lng: e.latlng.lng };
+      // En el selector, un local fuera de Ñemby no se puede guardar (la base
+      // lo rechaza). Se avisa en el momento en vez de dejar mover el pin.
+      if (!dentroDeNemby(punto)) {
+        setAviso('Ese punto queda fuera de Ñemby');
+        if (avisoTimer.current) clearTimeout(avisoTimer.current);
+        avisoTimer.current = setTimeout(() => setAviso(null), 2500);
+        return;
+      }
+      onMapClickRef.current(punto);
     });
 
     // Tocar el globo abre el negocio. Se engancha una sola vez sobre el globo
@@ -87,10 +149,16 @@ export function MapView({
     });
 
     // El contenedor arranca con tamaño 0 dentro de flex: hay que avisarle.
-    const timer = setTimeout(() => map.invalidateSize(), 200);
+    // Recién con el tamaño real se sabe cuánto zoom hace falta para ver la
+    // ciudad entera, que es el tope para alejarse.
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+      map.setMinZoom(map.getBoundsZoom(limites, false));
+    }, 200);
 
     return () => {
       clearTimeout(timer);
+      if (avisoTimer.current) clearTimeout(avisoTimer.current);
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
@@ -207,6 +275,14 @@ export function MapView({
      */
     const shouldFit = !onMapClickRef.current || !didFit.current;
 
+    // Selector: si el pin se movió fuera de la vista (escribiendo la latitud a
+    // mano, o eligiendo un barrio), el mapa lo sigue. Antes se quedaba quieto
+    // y el pin desaparecía, sin saber dónde había quedado.
+    if (eligiendoUbicacion && didFit.current && located[0]) {
+      const pin = L.latLng(located[0].latitude as number, located[0].longitude as number);
+      if (!map.getBounds().pad(-0.1).contains(pin)) map.panTo(pin);
+    }
+
     if (shouldFit) {
       if (circle) {
         /**
@@ -276,6 +352,28 @@ export function MapView({
       >
         {hint}
       </div>
+      {aviso && (
+        <div
+          role="status"
+          style={{
+            position: 'absolute',
+            top: 10,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: 12,
+            fontWeight: 700,
+            color: '#fff',
+            background: C.ink,
+            borderRadius: 999,
+            padding: '6px 12px',
+            zIndex: 600,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+          }}
+        >
+          {aviso}
+        </div>
+      )}
     </div>
   );
 }

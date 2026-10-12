@@ -80,9 +80,12 @@ export function Reserve() {
   const canQuerySlots =
     Boolean(business) && !porNoches && (!isTableMode || partySize !== null);
 
+  // El servicio entra en la consulta: cambia cuánto dura el turno, y con eso
+  // cuáles caben antes del cierre y cuáles chocan con otras reservas.
+  const servicioId = porNoches ? null : itemId;
   const slotsQuery = useAsync(
-    () => fetchAvailability(id, date, partySize),
-    [id, date, partySize],
+    () => fetchAvailability(id, date, partySize, servicioId),
+    [id, date, partySize, servicioId],
     { enabled: canQuerySlots },
   );
 

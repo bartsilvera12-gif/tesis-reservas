@@ -6,6 +6,7 @@ import { fetchBusinesses, fetchCategories } from '@/services/businesses';
 import { BusinessRow } from '@/components/BusinessCard';
 import { Chip, Loading, StateView } from '@/components/ui';
 import { C } from '@/lib/theme';
+import { CIUDAD, dentroDeNemby } from '@/lib/nemby';
 
 /**
  * El mapa se carga aparte, sólo cuando se va a ver.
@@ -19,15 +20,26 @@ const MapView = lazy(() =>
 );
 
 /**
- * Hasta dónde buscar. Arranca en 5 km: en Asunción es "mi zona y las de al
- * lado", que es lo que alguien tiene en la cabeza cuando abre el mapa.
+ * Hasta dónde buscar. Ñemby mide unos 9 km de punta a punta, así que 5 km ya
+ * es media ciudad. Arranca en 3 km: "mi barrio y los de al lado", que es lo
+ * que alguien tiene en la cabeza cuando abre el mapa.
  */
-const RADIOS = [1, 3, 5, 10] as const;
-const RADIO_INICIAL = 5;
+const RADIOS = [1, 2, 3, 5] as const;
+const RADIO_INICIAL = 3;
 
 export function Explore() {
   const navigate = useNavigate();
-  const { coords, denied } = useGeolocation();
+  const { coords: ubicacion, denied } = useGeolocation();
+
+  /**
+   * La ubicación sólo cuenta si la persona está en Ñemby.
+   *
+   * Desde otra ciudad, "a menos de 3 km" no tiene ningún local y el mapa
+   * (que no sale de Ñemby) ni siquiera mostraría dónde está. Ahí lo útil es
+   * ver la ciudad entera, y decirle por qué.
+   */
+  const fueraDeNemby = Boolean(ubicacion) && !dentroDeNemby(ubicacion!);
+  const coords = fueraDeNemby ? null : ubicacion;
 
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -149,7 +161,7 @@ export function Explore() {
               />
             ))}
             <Chip
-              label="Toda la ciudad"
+              label={`Todo ${CIUDAD}`}
               active={radio === null}
               onClick={() => setRadio(null)}
             />
@@ -189,6 +201,23 @@ export function Explore() {
               }
             />
           </Suspense>
+
+          {fueraDeNemby && (
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                color: C.sub,
+                lineHeight: 1.45,
+                background: C.disabledBg,
+                borderRadius: 10,
+                padding: '9px 12px',
+              }}
+            >
+              Estás fuera de {CIUDAD}. Por ahora la app reúne sólo los negocios de {CIUDAD},
+              así que te mostramos todos.
+            </div>
+          )}
 
           {denied && (
             <div
@@ -237,7 +266,7 @@ export function Explore() {
               : radioEfectivo
                 ? siguienteRadio(radioEfectivo)
                   ? `Buscar hasta ${siguienteRadio(radioEfectivo)} km`
-                  : 'Buscar en toda la ciudad'
+                  : `Buscar en todo ${CIUDAD}`
                 : undefined
           }
           onAction={
