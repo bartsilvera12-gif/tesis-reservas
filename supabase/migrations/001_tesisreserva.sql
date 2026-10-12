@@ -213,7 +213,7 @@ create table if not exists tesisreserva.businesses (
   active                        boolean     not null default true,
   deposit_enabled               boolean     not null default false,
   deposit_amount                numeric(12,2) not null default 0,
-  deposit_per_person            boolean     not null default true,
+  deposit_per_person            boolean     not null default false,
   -- A dónde transferir la seña. Se le muestra al cliente al reservar, así que
   -- son datos que el dueño publica a propósito, no información sensible suya.
   deposit_bank_name             text,
@@ -2200,6 +2200,20 @@ insert into tesisreserva.business_categories (name, slug) values
   ('Hospedajes',    'hospedajes'),
   ('Spa de uñas',   'spa-de-unas')
 on conflict (slug) do update set name = excluded.name;
+
+-- ============================================================================
+--  SEÑA POR PERSONA
+-- ============================================================================
+
+-- Arrancaba activada para todos: una peluquería nueva pedía "₲ 30.000 por
+-- persona" sin que el dueño lo eligiera. Ahora arranca por reserva, y donde
+-- no se cuentan personas (turnos y servicios) no tiene sentido, así que se
+-- apaga también en lo que ya existe.
+alter table tesisreserva.businesses alter column deposit_per_person set default false;
+update tesisreserva.businesses
+   set deposit_per_person = false
+ where deposit_per_person
+   and reservation_type in ('slot', 'service');
 
 -- ============================================================================
 --  DELIMITACIÓN: ÑEMBY

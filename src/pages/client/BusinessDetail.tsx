@@ -15,7 +15,7 @@ import {
   shortTime,
   timeAgo,
 } from '@/lib/format';
-import { catalogoDe, esPorNoches } from '@/lib/rubros';
+import { catalogoDe, esPorNoches, usaCantidadDePersonas } from '@/lib/rubros';
 import { ICONS } from '@/components/BottomNav';
 import type { BusinessHour, CatalogItem } from '@/types/db';
 
@@ -70,10 +70,14 @@ export function BusinessDetail() {
     .filter(Boolean)
     .join(' · ');
 
+  // Antes terminaba en "· reembolsable" en todos los negocios: era una
+  // promesa que el dueño nunca hizo y que la app no tiene cómo cumplir.
   const depositText = business.deposit_enabled
     ? `Seña de ${money(business.deposit_amount)}${
-        business.deposit_per_person ? ' por persona' : ''
-      } · reembolsable`
+        business.deposit_per_person && usaCantidadDePersonas(business.reservation_type)
+          ? ' por persona'
+          : ''
+      }`
     : 'Reserva sin seña';
 
   const tabStyle = (on: boolean) => ({
@@ -424,7 +428,9 @@ function CatalogTab({
                 // un servicio, cuánto dura.
                 item.capacity ? `Hasta ${item.capacity} personas` : null,
                 item.duration_minutes ? `${item.duration_minutes} min` : null,
-                item.capacity ? null : item.category?.name,
+                // La categoría ordena una carta ("Pastas", "Postres"); en los
+                // servicios siempre era "Servicios" y no decía nada.
+                item.item_type === 'product' ? item.category?.name : null,
               ]
                 .filter(Boolean)
                 .join(' · ')}

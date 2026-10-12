@@ -35,6 +35,7 @@ import { C } from '@/lib/theme';
 import { CIUDAD, NEMBY_CENTRO, dentroDeNemby } from '@/lib/nemby';
 import { UbicacionNegocio } from '@/components/UbicacionNegocio';
 import { guardarModo } from '@/lib/modo';
+import { usaCantidadDePersonas } from '@/lib/rubros';
 import { dayShort, money, shortTime } from '@/lib/format';
 import { ICONS } from '@/components/BottomNav';
 import type { BusinessHour, BusinessWithMeta, CatalogItem } from '@/types/db';
@@ -1039,6 +1040,14 @@ function EditItemSheet({
 
 function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: Toast }) {
   const { active } = useOwnerBusiness();
+  /**
+   * "Por persona" sólo existe donde la reserva dice cuántos van (mesas y
+   * hospedajes). En una peluquería o un lavadero el turno es uno: ahí el
+   * interruptor no se muestra y la seña es siempre por reserva.
+   */
+  const porPersona =
+    Boolean(active?.deposit_per_person) &&
+    usaCantidadDePersonas(active?.reservation_type ?? 'slot');
   const [amount, setAmount] = useState(String(Math.round(active?.deposit_amount ?? 0)));
   const [busy, setBusy] = useState(false);
 
@@ -1084,9 +1093,7 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
             ? 'Activada, pero sin monto: no se cobra nada'
             : faltaCuenta
               ? 'Falta cargar la cuenta para transferir'
-              : `${money(active.deposit_amount)} ${
-                  active.deposit_per_person ? 'por persona' : 'por reserva'
-                }`
+              : `${money(active.deposit_amount)} ${porPersona ? 'por persona' : 'por reserva'}`
       }
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1094,9 +1101,7 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
           <div style={{ fontSize: 13.5, fontWeight: 800 }}>Pedir seña al reservar</div>
           <div style={{ fontSize: 12, color: C.sub, marginTop: 2, lineHeight: 1.45 }}>
             {active.deposit_enabled
-              ? `${money(active.deposit_amount)}${
-                  active.deposit_per_person ? ' por persona' : ' por reserva'
-                }`
+              ? `${money(active.deposit_amount)}${porPersona ? ' por persona' : ' por reserva'}`
               : 'Las reservas se hacen sin seña.'}
           </div>
         </div>
@@ -1141,16 +1146,20 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
             </Button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
-              Cobrar por persona
-            </div>
-            <Switch
-              checked={active.deposit_per_person}
-              disabled={busy}
-              onChange={(next) => void patch({ deposit_per_person: next })}
-            />
-          </div>
+          {usaCantidadDePersonas(active.reservation_type) && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
+                  Cobrar por persona
+                </div>
+                <Switch
+                  checked={active.deposit_per_person}
+                  disabled={busy}
+                  onChange={(next) => void patch({ deposit_per_person: next })}
+                />
+              </div>
+            </>
+          )}
 
           <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 3 }}>
@@ -1304,8 +1313,8 @@ function VisibilidadCard({
 
         <div style={{ fontSize: 11.5, color: C.sub, marginTop: 12, lineHeight: 1.5 }}>
           No hay opción de eliminar el negocio: se llevaría las reservas y las reseñas
-          de tus clientes, que son el respaldo de lo que pasó. Si necesitás borrarlo de
-          verdad, escribinos.
+          de tus clientes, que son el respaldo de lo que pasó. Si ya no lo vas a usar,
+          pausalo: deja de aparecer para los clientes y su historial queda guardado.
         </div>
       </Seccion>
 

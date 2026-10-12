@@ -287,6 +287,8 @@ export function OwnerOnboarding() {
                         const r = rubroDe(cat.slug);
                         setReservationType(r.tipo);
                         setDuration(r.duracion);
+                        setOpensAt(r.horario.abre);
+                        setClosesAt(r.horario.cierra);
                         const iniciales = tamanosIniciales(r.tipo);
                         if (Object.keys(iniciales).length) setTables(iniciales);
                       }}

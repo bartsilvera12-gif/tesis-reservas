@@ -21,6 +21,12 @@ export interface Rubro {
   duracion: number;
   /** Cada cuántos minutos arranca un turno. */
   paso: number;
+  /**
+   * Horario que se sugiere al crear el negocio. Antes era 11:30 a 23:00 para
+   * todos, que es un horario de restaurante: un lavadero o una peluquería
+   * tenían que corregirlo siempre.
+   */
+  horario: { abre: string; cierra: string };
   /** Cómo se le llama a la capacidad en el panel del dueño. */
   capacidad: {
     titulo: string;
@@ -30,10 +36,15 @@ export interface Rubro {
   };
 }
 
-const TURNO_SIMPLE = (duracion: number, unidad: string): Rubro => ({
+const TURNO_SIMPLE = (
+  duracion: number,
+  unidad: string,
+  horario: Rubro['horario'] = { abre: '08:00', cierra: '18:00' },
+): Rubro => ({
   tipo: 'slot',
   duracion,
   paso: 15,
+  horario,
   capacidad: {
     titulo: `¿Cuántos ${unidad} a la vez?`,
     ayuda: `Cuántas reservas podés atender en el mismo horario.`,
@@ -42,13 +53,15 @@ const TURNO_SIMPLE = (duracion: number, unidad: string): Rubro => ({
 });
 
 const RUBROS: Record<string, Rubro> = {
-  lavaderos: TURNO_SIMPLE(60, 'vehículos'),
-  peluquerias: TURNO_SIMPLE(45, 'personas'),
+  lavaderos: TURNO_SIMPLE(60, 'vehículos', { abre: '07:30', cierra: '18:00' }),
+  // "clientes" y no "personas": el título es "¿Cuántos … a la vez?".
+  peluquerias: TURNO_SIMPLE(45, 'clientes', { abre: '09:00', cierra: '19:00' }),
 
   restaurantes: {
     tipo: 'table',
     duracion: 90,
     paso: 30,
+    horario: { abre: '11:30', cierra: '23:00' },
     capacidad: {
       titulo: 'Mesas por tamaño',
       ayuda: 'Cuántas mesas tenés de cada capacidad.',
@@ -60,6 +73,7 @@ const RUBROS: Record<string, Rubro> = {
     tipo: 'service',
     duracion: 45,
     paso: 15,
+    horario: { abre: '09:00', cierra: '19:00' },
     capacidad: {
       titulo: '¿Cuántas personas a la vez?',
       ayuda: 'Cuántos servicios podés atender en el mismo horario.',
@@ -73,6 +87,8 @@ const RUBROS: Record<string, Rubro> = {
     // Se deja el valor por defecto de la tabla para no dejarlo nulo.
     duracion: 90,
     paso: 60,
+    // Horario de recepción: a qué hora se puede hacer el ingreso.
+    horario: { abre: '08:00', cierra: '21:00' },
     capacidad: {
       titulo: 'Tus alojamientos',
       ayuda: 'Cargá cada tipo de habitación o cabaña con su precio por noche.',

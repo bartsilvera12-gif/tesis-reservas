@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -35,17 +36,27 @@ export function OwnerBusinessProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Sólo la primera carga es "cargando". Las que vienen después de guardar
+   * algo refrescan en silencio: el guardia del panel muestra la pantalla de
+   * carga mientras `loading` está activo, y con eso cada guardado desmontaba
+   * el panel entero y lo volvía a armar con todas las secciones cerradas.
+   */
+  const cargoPara = useRef<string | null>(null);
+
   const load = useCallback(async () => {
     if (!ownerId) {
       setBusinesses([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
+    // Otra cuenta en el mismo teléfono sí arranca de cero.
+    if (cargoPara.current !== ownerId) setLoading(true);
     setError(null);
     try {
       const rows = await fetchMyBusinesses(ownerId);
       setBusinesses(rows);
+      cargoPara.current = ownerId;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No pudimos cargar tus negocios.');
     } finally {
