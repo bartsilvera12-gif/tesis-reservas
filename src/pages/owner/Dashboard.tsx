@@ -222,6 +222,41 @@ export function OwnerDashboard() {
         />
       ) : stats ? (
         <>
+          {/* Lo único que el dueño TIENE que hacer va primero. Antes estaba
+              sólo el número en una tarjeta que no se podía tocar, y abajo
+              decía "No hay reservas para hoy": parecía que no había nada. */}
+          {stats.pending_count > 0 && (
+            <button
+              onClick={() => navigate('/panel/reservas?ver=pendientes')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                width: 'calc(100% - 40px)',
+                margin: '14px 20px 0',
+                padding: '14px 16px',
+                borderRadius: 16,
+                background: C.warnBg,
+                border: `1px solid ${C.warn}33`,
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: C.ink }}>
+                  {stats.pending_count === 1
+                    ? '1 reserva espera tu respuesta'
+                    : `${stats.pending_count} reservas esperan tu respuesta`}
+                </span>
+                <span style={{ display: 'block', fontSize: 12, color: C.sub, marginTop: 2 }}>
+                  Aceptalas o rechazalas para que el cliente sepa si tiene lugar.
+                </span>
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: C.terracottaDark, flexShrink: 0 }}>
+                Responder →
+              </span>
+            </button>
+          )}
+
           {/* Métricas */}
           <div style={{ display: 'flex', gap: 10, padding: '14px 20px 0' }}>
             <Metric value={String(stats.today_count)} label="Reservas hoy" />
@@ -229,6 +264,7 @@ export function OwnerDashboard() {
               value={String(stats.pending_count)}
               label="Pendientes"
               accent={stats.pending_count > 0}
+              onClick={() => navigate('/panel/reservas?ver=pendientes')}
             />
             <Metric
               value={stats.rating_avg != null ? `★ ${stats.rating_avg}` : '—'}
@@ -478,13 +514,18 @@ function Metric({
   value,
   label,
   accent,
+  onClick,
 }: {
   value: string;
   label: string;
   accent?: boolean;
+  /** Si se pasa, la tarjeta lleva a donde se resuelve lo que cuenta. */
+  onClick?: () => void;
 }) {
+  const Caja = onClick ? 'button' : 'div';
   return (
-    <div
+    <Caja
+      onClick={onClick}
       style={{
         flex: 1,
         minWidth: 0,
@@ -492,6 +533,7 @@ function Metric({
         border: `1px solid ${C.line}`,
         borderRadius: 14,
         padding: 12,
+        textAlign: 'left',
       }}
     >
       <div
@@ -507,7 +549,7 @@ function Metric({
         {value}
       </div>
       <div style={{ fontSize: 11, color: C.sub, marginTop: 1 }}>{label}</div>
-    </div>
+    </Caja>
   );
 }
 

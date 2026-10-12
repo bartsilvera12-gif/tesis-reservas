@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useToast } from '@/hooks/useToast';
@@ -7,7 +8,8 @@ import { fetchBusinessReservations, setReservationStatus } from '@/services/rese
 import { signedProofUrl } from '@/services/storage';
 import { Chip, Loading, PageTitle, StateView, StatusChip } from '@/components/ui';
 import { C } from '@/lib/theme';
-import { dayShort, money, shortTime, toISODate } from '@/lib/format';
+import { compactDate, dayShort, money, shortTime, toISODate } from '@/lib/format';
+import { usaCantidadDePersonas } from '@/lib/rubros';
 import type { ReservationStatus } from '@/types/db';
 
 /**
@@ -20,6 +22,16 @@ import type { ReservationStatus } from '@/types/db';
  */
 const DIAS_ATRAS = 7;
 const DIAS_ADELANTE = 7;
+
+/**
+ * El filtro de "por responder": todas las pendientes, de cualquier fecha.
+ *
+ * Mirando sólo día por día, el dueño entraba a "Hoy", veía "No hay reservas
+ * todavía" y no tenía cómo saber que mañana lo esperaban dos. Y la tira llega
+ * a una semana: una reserva de hospedaje para dentro de un mes no aparecía en
+ * ningún día y no había forma de aceptarla.
+ */
+const PENDIENTES = 'pendientes';
 
 function rangoDeDias(): Date[] {
   const base = new Date();
@@ -74,24 +86,61 @@ export function OwnerReservations() {
 
   const days = useMemo(() => rangoDeDias(), []);
   const hoy = useMemo(() => toISODate(new Date()), []);
-  const [date, setDate] = useState(hoy);
+  // Desde el inicio del panel se llega con ?ver=pendientes.
+  const [params] = useSearchParams();
+  const [date, setDate] = useState(params.get('ver') === PENDIENTES ? PENDIENTES : hoy);
   const [working, setWorking] = useState<string | null>(null);
+
+  const pendientesQuery = useAsync(
+    async () =>
+      (await fetchBusinessReservations(active!.id, null)).filter((r) => r.status === 'pending'),
+    [active?.id],
+    { enabled: Boolean(active) },
+  );
+  const pendientes = pendientesQuery.data ?? [];
+  const porResponder = pendientes.filter((r) => r.status === 'pending');
+
+  /**
+   * Si hay algo por responder, la pantalla abre ahí. Es lo único que el dueño
+   * TIENE que hacer; lo demás es consulta. Sólo la primera vez: si después
+   * elige otro día, no se lo cambiamos de abajo.
+   */
+  const yaEligio = useRef(params.get('ver') === PENDIENTES);
+  useEffect(() => {
+    if (yaEligio.current || !pendientesQuery.data) return;
+    yaEligio.current = true;
+    if (pendientesQuery.data.length > 0) setDate(PENDIENTES);
+  }, [pendientesQuery.data]);
 
   // La tira arranca una semana atrás, así que sin esto el dueño entra mirando
   // el lunes pasado. Se lleva "Hoy" al centro apenas se monta la pantalla.
   const tira = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const chip = tira.current?.children[DIAS_ATRAS] as HTMLElement | undefined;
+    // +1: el primer chip es el de "Por responder".
+    const chip = tira.current?.children[DIAS_ATRAS + 1] as HTMLElement | undefined;
     chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }, []);
+
+  const verPendientes = date === PENDIENTES;
+
+  // Abriendo en "Por responder", ese chip tiene que verse: centrar "Hoy" lo
+  // dejaba fuera de la pantalla, a la izquierda, y no se entendía qué filtro
+  // estaba puesto.
+  useEffect(() => {
+    if (verPendientes) tira.current?.scrollTo({ left: 0 });
+  }, [verPendientes]);
 
   const query = useAsync(
     () => fetchBusinessReservations(active!.id, date),
     [active?.id, date],
-    { enabled: Boolean(active) },
+    { enabled: Boolean(active) && !verPendientes },
   );
 
-  const list = query.data ?? [];
+  const list = verPendientes ? pendientes : (query.data ?? []);
+  const cargando = verPendientes
+    ? pendientesQuery.loading && !pendientesQuery.data
+    : query.loading && !query.data;
+  const errorDeCarga = verPendientes ? pendientesQuery.error : query.error;
 
   /**
    * Rechazar le llega al cliente como una notificación. Sin motivo se entera
@@ -124,6 +173,11 @@ export function OwnerReservations() {
       query.setData((prev) =>
         prev ? prev.map((r) => (r.id === id ? { ...r, status } : r)) : prev,
       );
+      // En "Por responder" la tarjeta queda a la vista con su nuevo estado
+      // hasta que se cambie de filtro: que desaparezca de golpe desorienta.
+      pendientesQuery.setData((prev) =>
+        prev ? prev.map((r) => (r.id === id ? { ...r, status } : r)) : prev,
+      );
 
       toast.success(AVISO[status] ?? 'Reserva actualizada.');
     } catch (err) {
@@ -141,15 +195,24 @@ export function OwnerReservations() {
       <PageTitle>Reservas</PageTitle>
 
       <div ref={tira} className="hscroll" style={{ padding: '0 20px 12px' }}>
+        <Chip
+          label={`Por responder · ${porResponder.length}`}
+          active={verPendientes}
+          onClick={() => setDate(PENDIENTES)}
+        />
         {days.map((d) => {
           const iso = toISODate(d);
+          const n = porResponder.filter((r) => r.reservation_date === iso).length;
           return (
             <Chip
               key={iso}
               label={
-                iso === hoy
+                (iso === hoy
                   ? `Hoy · ${dayShort(d.getDay())} ${d.getDate()}`
-                  : `${dayShort(d.getDay())} ${d.getDate()}`
+                  : `${dayShort(d.getDay())} ${d.getDate()}`) +
+                // El número avisa en qué día hay algo por responder, sin
+                // tener que entrar uno por uno a buscarlo.
+                (n > 0 ? ` (${n})` : '')
               }
               active={date === iso}
               onClick={() => setDate(iso)}
@@ -158,21 +221,35 @@ export function OwnerReservations() {
         })}
       </div>
 
-      {query.loading && !query.data ? (
+      {cargando ? (
         <Loading label="" />
-      ) : query.error ? (
+      ) : errorDeCarga ? (
         <StateView
           tone="error"
           title="No pudimos cargar las reservas."
-          detail={query.error}
+          detail={errorDeCarga}
           actionLabel="Reintentar"
-          onAction={query.reload}
+          onAction={verPendientes ? pendientesQuery.reload : query.reload}
         />
       ) : list.length === 0 ? (
-        <StateView
-          title="No hay reservas todavía."
-          detail="Cuando alguien reserve para este día lo vas a ver acá."
-        />
+        verPendientes ? (
+          <StateView
+            title="Nada por responder."
+            detail="Cuando entre una reserva nueva la vas a ver primero acá."
+          />
+        ) : porResponder.length > 0 ? (
+          <StateView
+            title="No hay reservas este día."
+            detail={`Tenés ${porResponder.length} por responder en otros días.`}
+            actionLabel="Ver las que esperan respuesta"
+            onAction={() => setDate(PENDIENTES)}
+          />
+        ) : (
+          <StateView
+            title="No hay reservas este día."
+            detail="Cuando alguien reserve para este día lo vas a ver acá."
+          />
+        )
       ) : (
         <div
           style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 20px' }}
@@ -214,12 +291,18 @@ export function OwnerReservations() {
 
               <div style={{ fontSize: 12.5, color: C.sub, marginTop: 4, lineHeight: 1.5 }}>
                 {[
+                  // Mezclando días, cada tarjeta tiene que decir de cuándo es.
+                  verPendientes ? compactDate(r.reservation_date) : null,
                   // El dueño de un hospedaje necesita ver hasta cuándo se
                   // queda el huésped, no a qué hora entra.
                   r.check_out_date
                     ? `hasta el ${new Date(`${r.check_out_date}T00:00:00`).getDate()}`
                     : `${shortTime(r.reservation_time)} h`,
-                  r.party_size ? `${r.party_size} personas` : null,
+                  // En un lavadero o una peluquería la cantidad de personas no
+                  // dice nada: el turno es uno.
+                  r.party_size && usaCantidadDePersonas(active.reservation_type)
+                    ? `${r.party_size} ${r.party_size === 1 ? 'persona' : 'personas'}`
+                    : null,
                   r.catalog_item?.name,
                   r.reservation_code,
                 ]
