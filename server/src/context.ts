@@ -71,6 +71,20 @@ const estadoSena = (e: unknown, conComprobante = false): string => {
   );
 };
 
+/**
+ * El estado tal como lo muestra la app. Pasado crudo ("pending") el modelo lo
+ * repetía en inglés en medio de una respuesta en castellano.
+ */
+const estadoReserva = (e: unknown): string =>
+  ({
+    pending: 'pendiente (el negocio todavía no respondió)',
+    confirmed: 'confirmada',
+    rejected: 'rechazada',
+    cancelled: 'cancelada',
+    completed: 'asistió',
+    no_show: 'no asistió',
+  })[String(e)] ?? String(e);
+
 type Nombrable = { name?: string } | null;
 
 /**
@@ -275,7 +289,7 @@ async function contextoDueno(
       for (const r of reservas) {
         const cli = corto((r.client as { full_name?: string } | null)?.full_name, 40) || 'cliente';
         partes.push(
-          `  · ${r.reservation_date} ${hhmm(r.reservation_time)} — ${cli}${r.party_size ? `, ${r.party_size} personas` : ''} — ${r.status} (${r.reservation_code})`,
+          `  · ${r.reservation_date} ${hhmm(r.reservation_time)} — ${cli}${r.party_size ? `, ${r.party_size} personas` : ''} — ${estadoReserva(r.status)} (${r.reservation_code})`,
         );
       }
     } else {
@@ -336,7 +350,7 @@ async function contextoCliente(
       const b = r.business as { name?: string; neighborhood?: string } | null;
       const item = (r.catalog_item as Nombrable)?.name;
       partes.push(
-        `- ${corto(b?.name, 50)} · ${r.reservation_date} ${hhmm(r.reservation_time)}${r.party_size ? ` · ${r.party_size} personas` : ''}${item ? ` · ${corto(item, 40)}` : ''} · estado: ${r.status} (código ${r.reservation_code})${r.deposit_required ? ` · seña ${money(r.deposit_amount)} (${estadoSena(r.deposit_status, Boolean(r.deposit_proof_url))})` : ' · este local NO pide seña: no hay nada que pagar ni comprobante que subir'}`,
+        `- ${corto(b?.name, 50)} · ${r.reservation_date} ${hhmm(r.reservation_time)}${r.party_size ? ` · ${r.party_size} personas` : ''}${item ? ` · ${corto(item, 40)}` : ''} · estado: ${estadoReserva(r.status)} (código ${r.reservation_code})${r.deposit_required ? ` · seña ${money(r.deposit_amount)} (${estadoSena(r.deposit_status, Boolean(r.deposit_proof_url))})` : ' · este local NO pide seña: no hay nada que pagar ni comprobante que subir'}`,
       );
     }
   } else {
