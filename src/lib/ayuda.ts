@@ -54,7 +54,7 @@ export const AYUDA_CLIENTE: SeccionAyuda[] = [
       '**Reseñas:** lo que opinaron otros clientes.',
       '**Info:** horarios, dirección, mapa, **Cómo llegar** y **WhatsApp**.',
     ],
-    imagen: 'c06-ficha',
+    imagen: 'c07-ficha-info',
   },
   {
     id: 'reservar',
@@ -165,7 +165,7 @@ export const AYUDA_DUENIO: SeccionAyuda[] = [
       '**Reservas que esperan respuesta:** tocá el aviso para responderlas.',
       'Los números del día y qué días te reservan más.',
     ],
-    imagen: 'e01-panel-pendientes',
+    imagen: 'd06-panel-recien-creado',
   },
   {
     id: 'responder',
@@ -223,7 +223,7 @@ export const AYUDA_DUENIO: SeccionAyuda[] = [
       '**Tocá el horario** para cambiarlo, o usar **horario partido**.',
       '**Usar este horario en todos los días** lo copia a la semana entera.',
     ],
-    imagen: 'd10-horarios',
+    imagen: 'd11-horario-dia',
   },
   {
     id: 'sena-duenio',

@@ -147,7 +147,7 @@ begin
       ('lavadero-autolimpio', 'Lavadero Autolimpio', 'lavaderos',
        'Lavado completo, encerado y limpieza de tapizados. Sala de espera con wifi.',
        'Coronel San Patricio 2300', 'Caaguazú', 'Ñemby', -25.4085, -57.5277,
-       '+595 21 601 200', false, 0, false, 0, '07:30', '18:00', false),
+       '+595 21 601 200', true, 20000, false, 0, '07:30', '18:00', false),
 
       ('full-wash-luque', 'Full Wash', 'lavaderos',
        'Lavado a mano y pulido de faros. Atención mientras esperás.',
@@ -167,7 +167,7 @@ begin
       ('hotel-estacion-central', 'Hotel Ñemby Central', 'hospedajes',
        'Hotel céntrico a pocas cuadras de la plaza. Desayuno buffet y cochera.',
        'Capitán Juan Genaro Lafranconi 620', 'San Carlos', 'Ñemby', -25.39255, -57.54431,
-       '+595 21 601 600', true, 120000, false, -1, '00:00', '23:59', false)
+       '+595 21 601 600', false, 0, false, -1, '00:00', '23:59', false)
     ) as t(slug, nombre, rubro, descripcion, direccion, barrio, ciudad, lat, lng,
            tel, sena, monto, por_persona, cerrado, abre, cierra, partido)
   loop
@@ -201,7 +201,9 @@ begin
     select v_owner,
            (select id from tesisreserva.business_categories where slug = r.rubro),
            r.nombre, r.slug, r.descripcion, r.direccion, r.barrio, r.ciudad,
-           r.lat, r.lng, r.tel, r.tel, true,
+           -- Sin WhatsApp: los teléfonos de ejemplo son fijos (021), y el botón
+           -- de WhatsApp de la ficha abriría un número que no lo tiene.
+           r.lat, r.lng, r.tel, null, true,
            r.sena, r.monto, r.por_persona,
            -- Sin cuenta cargada el cliente ve el monto y no tiene dónde
            -- transferirlo, así que los que piden seña la traen completa.

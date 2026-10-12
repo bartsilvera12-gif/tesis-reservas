@@ -76,12 +76,79 @@ const EMBLEMAS = {
     <path d="M18 78 h64"/>
     <path d="M27 54 v24"/>
     <path d="M73 54 v24"/>`,
+  cubiertos: `
+    <path d="M34 18 v20 a6 6 0 0 0 12 0 v-20"/>
+    <path d="M40 18 v18"/>
+    <path d="M40 44 v38"/>
+    <path d="M64 18 c-7 0 -9 9 -9 15 s4 11 9 11 s9 -5 9 -11 s-2 -15 -9 -15 z"/>
+    <path d="M64 44 v38"/>`,
+  pescado: `
+    <path d="M18 50 c13 -17 38 -17 52 0 c-14 17 -39 17 -52 0 z"/>
+    <path d="M70 50 l14 -11 v22 z"/>
+    <circle cx="33" cy="47" r="2.5"/>`,
+  sushi: `
+    <circle cx="48" cy="60" r="21"/>
+    <circle cx="48" cy="60" r="9"/>
+    <path d="M26 18 L80 40"/>
+    <path d="M24 27 L78 48"/>`,
+  peine: `
+    <path d="M20 38 h60 v10 h-60 z"/>
+    <path d="M26 48 v20 M34 48 v20 M42 48 v20 M50 48 v20 M58 48 v20 M66 48 v20 M74 48 v20"/>`,
+  esmalte: `
+    <path d="M44 18 h12 v24 h-12 z"/>
+    <path d="M36 42 h28 v34 a6 6 0 0 1 -6 6 h-16 a6 6 0 0 1 -6 -6 z"/>
+    <path d="M42 56 h16"/>`,
+  flor: `
+    <circle cx="50" cy="32" r="11"/>
+    <circle cx="68" cy="50" r="11"/>
+    <circle cx="50" cy="68" r="11"/>
+    <circle cx="32" cy="50" r="11"/>
+    <circle cx="50" cy="50" r="5"/>`,
+  auto: `
+    <path d="M14 64 v-12 q0 -5 5 -5 h9 l9 -13 h26 l9 13 h9 q5 0 5 5 v12 h-8"/>
+    <path d="M40 64 h20"/>
+    <path d="M22 64 h-8"/>
+    <path d="M37 34 l-6 13 h38 l-6 -13"/>
+    <circle cx="31" cy="64" r="8"/>
+    <circle cx="69" cy="64" r="8"/>`,
+  burbujas: `
+    <circle cx="38" cy="58" r="16"/>
+    <circle cx="66" cy="40" r="11"/>
+    <circle cx="66" cy="72" r="7"/>
+    <circle cx="34" cy="26" r="6"/>`,
+  casa: `
+    <path d="M18 50 L50 22 L82 50"/>
+    <path d="M28 42 v36 h44 v-36"/>
+    <path d="M44 78 v-18 h12 v18"/>`,
+  cama: `
+    <path d="M18 74 v-40"/>
+    <path d="M18 58 h64 v16"/>
+    <path d="M18 66 h64"/>
+    <path d="M28 58 v-8 a6 6 0 0 1 6 -6 h14 v14"/>`,
+  cabana: `
+    <path d="M50 18 L84 76 H16 Z"/>
+    <path d="M44 76 v-18 h12 v18"/>
+    <path d="M32 52 h36"/>`,
 };
 
 const LOGOS = [
   { slug: 'lupe-cafe',         emblema: 'cafe',     bg: '#996044', fg: '#F6ECDD' },
   { slug: 'barberia-el-prado', emblema: 'barberia', bg: '#4E6B4F', fg: '#F1E9DA' },
   { slug: 'aqua-spa-wellness', emblema: 'spa',      bg: '#5E8378', fg: '#F1E9DA' },
+  // Los que se sumaron después: un emblema por rubro y un color por negocio,
+  // para que en la lista no se vean todos iguales.
+  { slug: 'bocatto-trattoria',      emblema: 'cubiertos', bg: '#7A3E2E', fg: '#F6ECDD' },
+  { slug: 'marisqueria-costanera',  emblema: 'pescado',   bg: '#2F5D6B', fg: '#EAF2F1' },
+  { slug: 'sushi-nu',               emblema: 'sushi',     bg: '#3D322B', fg: '#F2CDA8' },
+  { slug: 'studio-kuna',            emblema: 'peine',     bg: '#8C5A6E', fg: '#F7ECEF' },
+  { slug: 'barberia-guarani',       emblema: 'barberia',  bg: '#5A4632', fg: '#F2CDA8' },
+  { slug: 'nails-ysapy',            emblema: 'esmalte',   bg: '#B5677A', fg: '#FBEFF2' },
+  { slug: 'bella-unas',             emblema: 'flor',      bg: '#C98A7A', fg: '#FFF6F2' },
+  { slug: 'lavadero-autolimpio',    emblema: 'auto',      bg: '#3F6E8C', fg: '#EEF4F8' },
+  { slug: 'full-wash-luque',        emblema: 'burbujas',  bg: '#2E7D86', fg: '#EAF6F7' },
+  { slug: 'posada-del-rio',         emblema: 'casa',      bg: '#6B7F4E', fg: '#F2F1E6' },
+  { slug: 'hotel-estacion-central', emblema: 'cama',      bg: '#4E4237', fg: '#F2CDA8' },
+  { slug: 'cabanas-del-lago',       emblema: 'cabana',    bg: '#7C5A3A', fg: '#F6ECDD' },
 ];
 
 function logoSvg({ emblema, bg, fg }) {
