@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAsync } from '@/hooks/useAsync';
 import { useGeolocation } from '@/hooks/useGeolocation';
@@ -17,7 +17,12 @@ import {
 } from '@/lib/format';
 import { catalogoDe, esPorNoches, usaCantidadDePersonas } from '@/lib/rubros';
 import { ICONS } from '@/components/BottomNav';
-import type { BusinessHour, CatalogItem } from '@/types/db';
+import type { BusinessHour, BusinessWithMeta, CatalogItem } from '@/types/db';
+
+/** El mapa se carga sólo si se abre la pestaña Info: Leaflet pesa. */
+const MapView = lazy(() =>
+  import('@/components/MapView').then((m) => ({ default: m.MapView })),
+);
 
 type Tab = 'carta' | 'resenas' | 'info';
 
@@ -351,6 +356,7 @@ export function BusinessDetail() {
               .join(', ')}
             phone={business.phone}
             depositText={depositText}
+            negocio={business}
           />
         )}
 
@@ -464,13 +470,26 @@ function InfoTab({
   address,
   phone,
   depositText,
+  negocio,
 }: {
   hours: BusinessHour[];
   loading: boolean;
   address: string;
   phone: string | null;
   depositText: string;
+  negocio: BusinessWithMeta;
 }) {
+  const ubicado = negocio.latitude != null && negocio.longitude != null;
+  // Abre la app de mapas del teléfono con el recorrido hasta el local.
+  const comoLlegar = ubicado
+    ? `https://www.google.com/maps/dir/?api=1&destination=${negocio.latitude},${negocio.longitude}`
+    : null;
+  // wa.me pide el número con código de país y sin símbolos: 0981… → 595981…
+  const soloNumeros = (negocio.whatsapp ?? '').replace(/\D/g, '');
+  const whatsapp = soloNumeros
+    ? `https://wa.me/${soloNumeros.startsWith('595') ? soloNumeros : '595' + soloNumeros.replace(/^0/, '')}`
+    : null;
+
   const rows: { icon: string; text: string }[] = [];
 
   if (address) rows.push({ icon: ICONS.location, text: address });
@@ -556,6 +575,49 @@ function InfoTab({
           {row.text}
         </div>
       ))}
+
+      {/* Dónde queda y cómo contactarlo. Antes la ficha daba la dirección
+          escrita y nada más: había que copiarla a otra app para ir. */}
+      {ubicado && (
+        <Suspense fallback={<Loading label="" />}>
+          <MapView
+            businesses={[negocio]}
+            center={null}
+            onSelect={() => {}}
+            height={170}
+            hint={negocio.neighborhood ?? 'Ñemby'}
+          />
+        </Suspense>
+      )}
+      {(comoLlegar || whatsapp) && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          {comoLlegar && (
+            <a href={comoLlegar} target="_blank" rel="noopener noreferrer" style={enlaceBoton}>
+              Cómo llegar
+            </a>
+          )}
+          {whatsapp && (
+            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={enlaceBoton}>
+              WhatsApp
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+
+const enlaceBoton = {
+  flex: 1,
+  minHeight: 44,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 12,
+  border: `1.5px solid ${C.line}`,
+  background: C.surface,
+  color: C.terracottaDark,
+  fontSize: 13.5,
+  fontWeight: 800,
+  textDecoration: 'none',
+} as const;

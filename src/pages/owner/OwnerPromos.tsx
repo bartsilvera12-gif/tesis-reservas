@@ -263,11 +263,15 @@ export function OwnerPromos() {
                     >
                       {p.title}
                     </div>
-                    <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
-                      {p.description ||
-                        (p.unlimited || !p.ends_at
-                          ? 'Sin vencimiento'
-                          : `Hasta el ${new Date(p.ends_at).toLocaleDateString('es-PY')}`)}
+                    {p.description && (
+                      <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>{p.description}</div>
+                    )}
+                    {/* La vigencia va siempre: antes sólo se veía si la promo no
+                        tenía descripción, y no había forma de saber cuándo vencía. */}
+                    <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2, fontWeight: 600 }}>
+                      {p.unlimited || !p.ends_at
+                        ? 'Sin vencimiento'
+                        : `${expired ? 'Venció' : 'Hasta'} el ${new Date(p.ends_at).toLocaleDateString('es-PY')}`}
                     </div>
                   </div>
 

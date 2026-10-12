@@ -694,9 +694,11 @@ function ImagePicker({
       <label
         style={{
           display: 'block',
-          width: '100%',
+          // El logo es cuadrado y en la app se ve chico: a todo el ancho, con
+          // el tope de alto, quedaba un rectángulo que recortaba la imagen.
+          width: aspect <= 1 ? 120 : '100%',
           aspectRatio: String(aspect),
-          maxHeight: 150,
+          maxHeight: aspect <= 1 ? undefined : 150,
           borderRadius: 14,
           border: `1.5px dashed ${C.line}`,
           background: preview ? `url(${preview}) center/cover` : C.surface,

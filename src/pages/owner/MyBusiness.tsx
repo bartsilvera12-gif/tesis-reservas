@@ -372,6 +372,9 @@ function HoursCard({ toast }: { toast: Toast }) {
   const [second, setSecond] = useState(false);
   const [opensAt2, setOpensAt2] = useState('19:00');
   const [closesAt2, setClosesAt2] = useState('23:00');
+  // Copiar el horario a todos los días abiertos. Antes, cambiar el horario de
+  // la semana entera eran seis ediciones, una por día.
+  const [aTodos, setATodos] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const query = useAsync(
@@ -404,6 +407,7 @@ function HoursCard({ toast }: { toast: Toast }) {
     setSecond(slots.length > 1);
     setOpensAt2(shortTime(slots[1]?.opens_at) || '19:00');
     setClosesAt2(shortTime(slots[1]?.closes_at) || '23:00');
+    setATodos(false);
     setEditing(hour);
   }
 
@@ -428,9 +432,14 @@ function HoursCard({ toast }: { toast: Toast }) {
       const slots = [{ opens_at: opensAt, closes_at: closesAt }];
       if (second) slots.push({ opens_at: opensAt2, closes_at: closesAt2 });
 
-      await replaceDaySlots(editing.id, slots);
+      const dias = aTodos
+        ? hours.filter((h) => h.enabled || h.id === editing.id)
+        : [editing];
+      for (const dia of dias) await replaceDaySlots(dia.id, slots);
       query.reload();
-      toast.success('Horario actualizado.');
+      toast.success(
+        dias.length > 1 ? `Horario aplicado a ${dias.length} días.` : 'Horario actualizado.',
+      );
       setEditing(null);
     } catch (err) {
       toast.fail(err instanceof Error ? err.message : 'No pudimos guardar el horario.');
@@ -580,8 +589,30 @@ function HoursCard({ toast }: { toast: Toast }) {
             </div>
           )}
 
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              background: C.surface,
+              border: `1px solid ${C.line}`,
+              borderRadius: 12,
+              padding: '12px 14px',
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700 }}>
+                Usar este horario en todos los días
+              </div>
+              <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
+                Se copia a los días que tenés abiertos. Los cerrados no cambian.
+              </div>
+            </div>
+            <Switch checked={aTodos} onChange={setATodos} />
+          </div>
+
           <Button loading={busy} onClick={() => void saveSlots()}>
-            Guardar horario
+            {aTodos ? 'Guardar en todos los días' : 'Guardar horario'}
           </Button>
         </div>
       </Sheet>
@@ -737,6 +768,8 @@ function CatalogCard({ toast }: { toast: Toast }) {
   const items = query.data ?? [];
 
   async function add() {
+    // Un segundo toque mientras guarda duplicaba el servicio.
+    if (busy) return;
     if (!name.trim()) {
       toast.fail('Poné un nombre.');
       return;
@@ -891,6 +924,11 @@ function CatalogCard({ toast }: { toast: Toast }) {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
+            // Enter pasa al precio: agregar directo lo dejaría en ₲ 0.
+            enterKeyHint="next"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.currentTarget.nextElementSibling as HTMLInputElement | null)?.focus();
+            }}
             placeholder={isService ? 'Nuevo servicio' : 'Nuevo producto'}
             style={{
               flex: 2,
@@ -906,6 +944,9 @@ function CatalogCard({ toast }: { toast: Toast }) {
             onChange={(e) => setPrice(e.target.value)}
             inputMode="numeric"
             placeholder="₲"
+            // La tecla "Ir" del teclado agrega, igual que el botón.
+            enterKeyHint="done"
+            onKeyDown={(e) => e.key === 'Enter' && void add()}
             style={{
               flex: 1,
               minWidth: 0,
@@ -919,6 +960,7 @@ function CatalogCard({ toast }: { toast: Toast }) {
             onClick={() => void add()}
             disabled={busy}
             style={{
+              opacity: busy ? 0.65 : 1,
               background: C.terracotta,
               color: '#fff',
               borderRadius: 10,
@@ -932,7 +974,7 @@ function CatalogCard({ toast }: { toast: Toast }) {
             }}
           >
             {busy && <Spinner size={13} color="#fff" />}
-            Añadir
+            {busy ? 'Guardando…' : 'Añadir'}
           </button>
         </div>
       </Seccion>

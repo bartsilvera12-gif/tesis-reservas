@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
 import { useAsync } from '@/hooks/useAsync';
 import { buildInsights, fetchBusinessStats } from '@/services/stats';
+import { fetchBusinessHours, fetchCatalog } from '@/services/businesses';
+import { catalogoDe } from '@/lib/rubros';
 import { fetchBusinessReservations, fetchPendingByBusiness } from '@/services/reservations';
 import { Loading, Sheet, StateView, StatusChip } from '@/components/ui';
 import { C } from '@/lib/theme';
@@ -222,6 +224,8 @@ export function OwnerDashboard() {
         />
       ) : stats ? (
         <>
+          {active && <CompletaTuNegocio negocio={active} />}
+
           {/* Lo único que el dueño TIENE que hacer va primero. Antes estaba
               sólo el número en una tarjeta que no se podía tocar, y abajo
               decía "No hay reservas para hoy": parecía que no había nada. */}
@@ -683,5 +687,139 @@ export function SelectorDeNegocio({
             </button>
           </div>
         </Sheet>
+  );
+}
+
+/**
+ * Qué le falta a un negocio para estar listo.
+ *
+ * Un dueño recién llegado entraba a un panel con todo en cero y sin pistas:
+ * no sabía que tenía que cargar servicios ni revisar la seña. La tarjeta
+ * aparece sólo mientras falte algo, y cada punto lleva a donde se resuelve.
+ */
+function CompletaTuNegocio({ negocio }: { negocio: BusinessWithMeta }) {
+  const navigate = useNavigate();
+  const datos = useAsync(
+    async () => {
+      const [catalogo, horarios] = await Promise.all([
+        fetchCatalog(negocio.id, false),
+        fetchBusinessHours(negocio.id),
+      ]);
+      return {
+        items: catalogo.filter((i) => i.active).length,
+        diasAbiertos: horarios.filter((h) => h.enabled).length,
+      };
+    },
+    [negocio.id],
+  );
+
+  if (!datos.data) return null;
+
+  const catalogo = catalogoDe(negocio.reservation_type);
+  const pasos = [
+    {
+      hecho: Boolean(negocio.cover_url),
+      texto: 'Subí una foto de portada',
+      ayuda: 'Es lo primero que ven los clientes.',
+    },
+    {
+      hecho: datos.data.items > 0,
+      texto: `Cargá al menos un ${catalogo.singular}`,
+      ayuda: 'Con precio, para que sepan qué ofrecés.',
+    },
+    {
+      hecho: datos.data.diasAbiertos > 0,
+      texto: 'Revisá tus horarios',
+      ayuda: 'Sin días abiertos nadie puede reservar.',
+    },
+    ...(negocio.deposit_enabled
+      ? [
+          {
+            hecho: negocio.deposit_amount > 0 && Boolean(negocio.deposit_account_number?.trim()),
+            texto: 'Completá la seña',
+            ayuda: 'El monto y la cuenta a la que te transfieren.',
+          },
+        ]
+      : []),
+  ];
+
+  const faltan = pasos.filter((p) => !p.hecho).length;
+  if (faltan === 0) return null;
+
+  return (
+    <div
+      style={{
+        margin: '14px 20px 0',
+        background: C.surface,
+        border: `1px solid ${C.line}`,
+        borderRadius: 16,
+        padding: '14px 16px',
+      }}
+    >
+      <div style={{ fontSize: 14.5, fontWeight: 800 }}>Completá tu negocio</div>
+      <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
+        {faltan === 1 ? 'Te falta 1 paso' : `Te faltan ${faltan} pasos`} para estar listo.
+      </div>
+      <div style={{ marginTop: 8 }}>
+        {pasos.map((p) => (
+          <button
+            key={p.texto}
+            onClick={() => navigate('/panel/negocio')}
+            disabled={p.hecho}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              width: '100%',
+              textAlign: 'left',
+              padding: '8px 0',
+              borderTop: `1px solid ${C.lineSoft}`,
+              minHeight: 44,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 13,
+                fontWeight: 800,
+                background: p.hecho ? C.cream : 'transparent',
+                border: `1.5px solid ${p.hecho ? C.cream : C.line}`,
+                color: C.terracottaDark,
+              }}
+            >
+              {p.hecho ? '✓' : ''}
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span
+                style={{
+                  display: 'block',
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  color: p.hecho ? C.sub : C.ink,
+                  textDecoration: p.hecho ? 'line-through' : 'none',
+                }}
+              >
+                {p.texto}
+              </span>
+              {!p.hecho && (
+                <span style={{ display: 'block', fontSize: 11.5, color: C.sub, marginTop: 1 }}>
+                  {p.ayuda}
+                </span>
+              )}
+            </span>
+            {!p.hecho && (
+              <span style={{ fontSize: 13, fontWeight: 800, color: C.terracottaDark }}>→</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
