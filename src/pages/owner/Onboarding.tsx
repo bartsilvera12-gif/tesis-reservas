@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
@@ -13,25 +13,15 @@ import {
   updateBusiness,
 } from '@/services/businesses';
 import { uploadBusinessImage } from '@/services/storage';
-import { Button, Chip, Field, Loading, Spinner, Stepper } from '@/components/ui';
+import { Button, Field, Loading, Spinner, Stepper } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
 import { guardarModo } from '@/lib/modo';
-import { BARRIOS, CIUDAD, NEMBY_CENTRO, dentroDeNemby } from '@/lib/nemby';
+import { CIUDAD, NEMBY_CENTRO, dentroDeNemby } from '@/lib/nemby';
+import { UbicacionNegocio } from '@/components/UbicacionNegocio';
 import { dayShort, slugify } from '@/lib/format';
 import { rubroDe, tamanosIniciales } from '@/lib/rubros';
 import { ErrorImagen, LADO_LOGO, LADO_PORTADA, prepararImagen } from '@/lib/image';
-import type { BusinessWithMeta, ReservationType } from '@/types/db';
-
-/**
- * El mapa se carga aparte, sólo cuando se va a ver.
- *
- * Leaflet pesa como un tercio del paquete y no lo necesita casi nadie: en el
- * teléfono, ese peso es tiempo de arranque en TODAS las pantallas, aunque
- * nunca se abra el mapa.
- */
-const MapView = lazy(() =>
-  import('@/components/MapView').then((m) => ({ default: m.MapView })),
-);
+import type { ReservationType } from '@/types/db';
 
 /**
  * Posición inicial del pin en el selector de ubicación (centro de Ñemby).
@@ -371,43 +361,12 @@ export function OwnerOnboarding() {
               onChange={(e) => setAddress(e.target.value)}
             />
 
-            <div>
-              <Field
-                label="Barrio"
-                placeholder="Pa'i Ñu"
-                value={neighborhood}
-                onChange={(e) => setNeighborhood(e.target.value)}
-              />
-              {/* Tocar un barrio lo escribe y lleva el pin hasta ahí: el dueño
-                  sólo tiene que ajustarlo a su cuadra. */}
-              <div className="hscroll" style={{ marginTop: 8 }}>
-                {BARRIOS.map((b) => (
-                  <Chip
-                    key={b.nombre}
-                    label={b.nombre}
-                    active={neighborhood === b.nombre}
-                    onClick={() => {
-                      setNeighborhood(b.nombre);
-                      setCoords({ lat: b.lat, lng: b.lng });
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.45 }}>
-              Ciudad: <strong style={{ color: C.ink }}>{CIUDAD}</strong>
-            </div>
-
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-                Ubicación en el mapa
-              </div>
-              <LocationPicker value={coords} onChange={setCoords} />
-              <div style={{ fontSize: 12, color: C.sub, marginTop: 8, lineHeight: 1.45 }}>
-                Tocá el mapa para mover el pin. Es lo que ven tus clientes al buscarte.
-              </div>
-            </div>
+            <UbicacionNegocio
+              barrio={neighborhood}
+              onBarrio={setNeighborhood}
+              coords={coords}
+              onCoords={setCoords}
+            />
           </>
         )}
 
@@ -794,131 +753,6 @@ function ImagePicker({
       {fallo && (
         <div style={{ marginTop: 6, fontSize: 12, color: C.danger, lineHeight: 1.45 }}>
           {fallo}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─────────────────────  Selector de ubicación  ───────────────────── */
-
-function LocationPicker({
-  value,
-  onChange,
-}: {
-  value: { lat: number; lng: number };
-  onChange: (next: { lat: number; lng: number }) => void;
-}) {
-  /**
-   * Se reutiliza MapView tratando el pin como un "negocio" temporal.
-   * Los ajustes finos de lat/lng quedan disponibles debajo por si el
-   * usuario prefiere escribirlos.
-   */
-  const pseudo = useMemo(
-    () =>
-      [
-        {
-          id: 'picker',
-          name: 'Tu negocio',
-          latitude: value.lat,
-          longitude: value.lng,
-        } as unknown as BusinessWithMeta,
-      ],
-    [value],
-  );
-
-  return (
-    <>
-      <Suspense fallback={<Loading label="Abriendo el mapa…" />}>
-        <MapView
-          businesses={pseudo}
-          center={null}
-          onSelect={() => {}}
-          onMapClick={onChange}
-          height={200}
-          hint="Tocá el mapa para mover el pin"
-        />
-      </Suspense>
-      <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-        <div style={{ flex: 1 }}>
-          <Field
-            label="Latitud"
-            type="number"
-            step="0.0001"
-            value={value.lat}
-            onChange={(e) => onChange({ ...value, lat: Number(e.target.value) })}
-          />
-        </div>
-        <div style={{ flex: 1 }}>
-          <Field
-            label="Longitud"
-            type="number"
-            step="0.0001"
-            value={value.lng}
-            onChange={(e) => onChange({ ...value, lng: Number(e.target.value) })}
-          />
-        </div>
-      </div>
-      <UseMyLocation onChange={onChange} />
-    </>
-  );
-}
-
-function UseMyLocation({
-  onChange,
-}: {
-  onChange: (next: { lat: number; lng: number }) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [denied, setDenied] = useState(false);
-  const [fuera, setFuera] = useState(false);
-
-  return (
-    <div style={{ marginTop: 8 }}>
-      <button
-        onClick={() => {
-          setBusy(true);
-          setDenied(false);
-          setFuera(false);
-          navigator.geolocation?.getCurrentPosition(
-            (pos) => {
-              const aca = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-              setBusy(false);
-              // Cargando el negocio desde la casa, en otra ciudad, el pin se
-              // iría afuera del mapa. Mejor decirlo que moverlo a ciegas.
-              if (!dentroDeNemby(aca)) {
-                setFuera(true);
-                return;
-              }
-              onChange(aca);
-            },
-            () => {
-              setDenied(true);
-              setBusy(false);
-            },
-            { enableHighAccuracy: true, timeout: 10_000 },
-          );
-        }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 13,
-          fontWeight: 700,
-          color: C.terracottaDark,
-        }}
-      >
-        {busy ? <Spinner size={14} /> : null}
-        Usar mi ubicación actual
-      </button>
-      {denied && (
-        <div style={{ fontSize: 12, color: C.sub, marginTop: 5 }}>
-          No pudimos obtener tu ubicación. Podés moverla a mano.
-        </div>
-      )}
-      {fuera && (
-        <div style={{ fontSize: 12, color: C.sub, marginTop: 5 }}>
-          Ahora estás fuera de {CIUDAD}. Elegí el barrio o tocá el mapa donde está tu negocio.
         </div>
       )}
     </div>

@@ -32,6 +32,8 @@ import {
   Switch,
 } from '@/components/ui';
 import { C } from '@/lib/theme';
+import { CIUDAD, NEMBY_CENTRO, dentroDeNemby } from '@/lib/nemby';
+import { UbicacionNegocio } from '@/components/UbicacionNegocio';
 import { guardarModo } from '@/lib/modo';
 import { dayShort, money, shortTime } from '@/lib/format';
 import { ICONS } from '@/components/BottomNav';
@@ -251,6 +253,12 @@ function DescriptionCard({
   const [description, setDescription] = useState(active?.description ?? '');
   const [address, setAddress] = useState(active?.address ?? '');
   const [neighborhood, setNeighborhood] = useState(active?.neighborhood ?? '');
+  // Sin coordenadas guardadas, el pin arranca en el centro de Ñemby.
+  const [coords, setCoords] = useState(
+    active?.latitude != null && active?.longitude != null
+      ? { lat: active.latitude, lng: active.longitude }
+      : NEMBY_CENTRO,
+  );
   const [phone, setPhone] = useState(active?.phone ?? '');
   const [whatsapp, setWhatsapp] = useState(active?.whatsapp ?? '');
 
@@ -258,12 +266,19 @@ function DescriptionCard({
 
   async function save() {
     if (!active) return;
+    if (!dentroDeNemby(coords)) {
+      toast.fail(`La ubicación tiene que quedar dentro de ${CIUDAD}. Tocá el mapa para moverla.`);
+      return;
+    }
     setBusy(true);
     try {
       await updateBusiness(active.id, {
         description: description.trim() || null,
         address: address.trim() || null,
         neighborhood: neighborhood.trim() || null,
+        city: CIUDAD,
+        latitude: coords.lat,
+        longitude: coords.lng,
         phone: phone.trim() || null,
         whatsapp: whatsapp.trim() || null,
       });
@@ -287,7 +302,7 @@ function DescriptionCard({
         resumen={
           faltaDireccion
             ? 'Falta la dirección'
-            : [active.address, active.phone].filter(Boolean).join(' · ')
+            : [active.address, active.neighborhood, active.phone].filter(Boolean).join(' · ')
         }
       >
         <div style={{ fontSize: 13.5, color: '#5C5044', lineHeight: 1.5 }}>
@@ -319,10 +334,11 @@ function DescriptionCard({
             onChange={(e) => setDescription(e.target.value)}
           />
           <Field label="Dirección" value={address} onChange={(e) => setAddress(e.target.value)} />
-          <Field
-            label="Barrio / Zona"
-            value={neighborhood}
-            onChange={(e) => setNeighborhood(e.target.value)}
+          <UbicacionNegocio
+            barrio={neighborhood}
+            onBarrio={setNeighborhood}
+            coords={coords}
+            onCoords={setCoords}
           />
           <Field
             label="Teléfono"
