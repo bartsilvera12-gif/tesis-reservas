@@ -156,7 +156,16 @@ export function ReservationConfirmed() {
         {r.deposit_required && (
           <>
             <br />
-            Seña a coordinar: <strong>{money(r.deposit_amount)}</strong>
+            {r.deposit_proof_url ? (
+              <>
+                Recibimos el comprobante de la seña de{' '}
+                <strong>{money(r.deposit_amount)}</strong>. El negocio lo revisa al confirmar.
+              </>
+            ) : (
+              <>
+                Seña a coordinar: <strong>{money(r.deposit_amount)}</strong>
+              </>
+            )}
           </>
         )}
       </div>

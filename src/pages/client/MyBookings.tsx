@@ -217,8 +217,17 @@ export function MyBookings() {
                   {r.reservation_code}
                 </span>
                 {r.deposit_required && (
-                  <span style={{ fontSize: 11.5, color: C.warn, fontWeight: 600 }}>
+                  <span
+                    style={{
+                      fontSize: 11.5,
+                      // Con el comprobante subido ya no es algo pendiente del
+                      // cliente: deja de verse como aviso.
+                      color: r.deposit_proof_url ? C.sub : C.warn,
+                      fontWeight: 600,
+                    }}
+                  >
                     Seña {money(r.deposit_amount)}
+                    {r.deposit_proof_url ? ' · comprobante enviado' : ''}
                   </span>
                 )}
               </div>

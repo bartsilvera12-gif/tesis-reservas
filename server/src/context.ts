@@ -52,14 +52,24 @@ const hhmm = (t: unknown): string => String(t ?? '').slice(0, 5);
  * sobre una reserva impaga. La app todavía no procesa pagos: la seña se
  * coordina con el negocio.
  */
-const estadoSena = (e: unknown): string =>
-  ({
-    pending: 'PENDIENTE de pago, se coordina con el negocio',
-    paid: 'ya pagada',
-    refunded: 'devuelta',
-    failed: 'el pago falló',
-    none: 'sin seña',
-  })[String(e)] ?? 'estado desconocido';
+const estadoSena = (e: unknown, conComprobante = false): string => {
+  // El estado de la seña sólo lo cambia el negocio. Mientras tanto queda en
+  // 'pending' aunque el cliente ya haya transferido y subido el comprobante:
+  // mirando sólo el estado, el asistente le decía "te falta pagar la seña" a
+  // alguien que ya la había pagado.
+  if (String(e) === 'pending' && conComprobante) {
+    return 'el cliente YA transfirió y subió el comprobante; falta que el negocio lo revise';
+  }
+  return (
+    {
+      pending: 'PENDIENTE: todavía no subió el comprobante de la transferencia',
+      paid: 'ya pagada',
+      refunded: 'devuelta',
+      failed: 'el pago falló',
+      none: 'sin seña',
+    }[String(e)] ?? 'estado desconocido'
+  );
+};
 
 type Nombrable = { name?: string } | null;
 
@@ -314,7 +324,7 @@ async function contextoCliente(
   const { data: reservas } = await supabase
     .from('reservations')
     .select(
-      'reservation_date, reservation_time, party_size, status, reservation_code, deposit_required, deposit_amount, deposit_status, business:businesses(name, neighborhood), catalog_item:catalog_items(name)',
+      'reservation_date, reservation_time, party_size, status, reservation_code, deposit_required, deposit_amount, deposit_status, deposit_proof_url, business:businesses(name, neighborhood), catalog_item:catalog_items(name)',
     )
     .eq('client_id', clientId)
     .order('reservation_date', { ascending: false })
@@ -326,7 +336,7 @@ async function contextoCliente(
       const b = r.business as { name?: string; neighborhood?: string } | null;
       const item = (r.catalog_item as Nombrable)?.name;
       partes.push(
-        `- ${corto(b?.name, 50)} · ${r.reservation_date} ${hhmm(r.reservation_time)}${r.party_size ? ` · ${r.party_size} personas` : ''}${item ? ` · ${corto(item, 40)}` : ''} · estado: ${r.status} (código ${r.reservation_code})${r.deposit_required ? ` · seña ${money(r.deposit_amount)} (${estadoSena(r.deposit_status)})` : ' · sin seña'}`,
+        `- ${corto(b?.name, 50)} · ${r.reservation_date} ${hhmm(r.reservation_time)}${r.party_size ? ` · ${r.party_size} personas` : ''}${item ? ` · ${corto(item, 40)}` : ''} · estado: ${r.status} (código ${r.reservation_code})${r.deposit_required ? ` · seña ${money(r.deposit_amount)} (${estadoSena(r.deposit_status, Boolean(r.deposit_proof_url))})` : ' · sin seña'}`,
       );
     }
   } else {
