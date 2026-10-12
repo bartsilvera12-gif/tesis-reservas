@@ -38,6 +38,7 @@ import { OwnerReservations } from '@/pages/owner/OwnerReservations';
 import { MyBusiness } from '@/pages/owner/MyBusiness';
 import { OwnerReviews } from '@/pages/owner/OwnerReviews';
 import { OwnerPromos } from '@/pages/owner/OwnerPromos';
+import { Ayuda } from '@/pages/Ayuda';
 
 export default function App() {
   return (
@@ -69,6 +70,7 @@ export default function App() {
                 <Route path="perfil" element={<Profile />} />
                 <Route path="mis-resenas" element={<MyReviews />} />
                 <Route path="notificaciones" element={<Notifications />} />
+                <Route path="ayuda" element={<Ayuda inicial="cliente" backTo="/app/perfil" />} />
                 <Route path="negocio/:id" element={<BusinessDetail />} />
                 <Route path="negocio/:id/reservar" element={<Reserve />} />
                 <Route path="negocio/:id/resena" element={<WriteReview />} />
@@ -100,6 +102,7 @@ export default function App() {
                 <Route path="negocio" element={<MyBusiness />} />
                 <Route path="resenas" element={<OwnerReviews />} />
                 <Route path="promos" element={<OwnerPromos />} />
+                <Route path="ayuda" element={<Ayuda inicial="duenio" backTo="/panel/negocio" />} />
                 <Route
                   path="notificaciones"
                   element={<Notifications backTo="/panel" />}

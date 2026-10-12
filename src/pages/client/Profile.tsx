@@ -119,6 +119,7 @@ export function Profile() {
       onClick: () => navigate('/app/notificaciones'),
       badge: unreadQuery.data ?? 0,
     },
+    { label: 'Cómo se usa la app', onClick: () => navigate('/app/ayuda') },
   ];
 
   return (

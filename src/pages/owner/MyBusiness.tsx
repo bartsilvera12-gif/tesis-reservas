@@ -43,6 +43,7 @@ import type { BusinessHour, BusinessWithMeta, CatalogItem } from '@/types/db';
 export function MyBusiness() {
   const { active, reload } = useOwnerBusiness();
   const toast = useToast();
+  const navigate = useNavigate();
 
   if (!active) return null;
 
@@ -53,7 +54,26 @@ export function MyBusiness() {
 
   return (
     <div style={{ paddingBottom: 28 }}>
-      <PageTitle>Mi negocio</PageTitle>
+      <PageTitle
+        right={
+          <button
+            onClick={() => navigate('/panel/ayuda')}
+            style={{
+              fontSize: 12.5,
+              fontWeight: 800,
+              color: C.terracottaDark,
+              background: C.cream,
+              borderRadius: 999,
+              padding: '0 14px',
+              minHeight: 36,
+            }}
+          >
+            ¿Cómo se usa?
+          </button>
+        }
+      >
+        Mi negocio
+      </PageTitle>
 
       <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <IdentityCard onSaved={reload} toast={toast} />
