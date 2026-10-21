@@ -264,6 +264,12 @@ alter table tesisreserva.businesses
   add constraint businesses_reservation_type_check
   check (reservation_type in ('table', 'service', 'slot', 'stay'));
 
+-- Aceptar solas las reservas que no piden seña. Por defecto NO: el dueño
+-- revisa cada pedido. Si el local pide seña se ignora siempre, porque alguien
+-- tiene que mirar en el banco que la transferencia llegó.
+alter table tesisreserva.businesses
+  add column if not exists auto_confirm boolean not null default false;
+
 create index if not exists idx_businesses_owner    on tesisreserva.businesses (owner_id);
 create index if not exists idx_businesses_category on tesisreserva.businesses (category_id);
 create index if not exists idx_businesses_active   on tesisreserva.businesses (active);
@@ -534,6 +540,65 @@ alter table tesisreserva.reservations
   add constraint reservations_stay_check
   check (check_out_date is null or check_out_date > reservation_date);
 
+-- ---------------------------------------------------------------------------
+-- Ciclo de vida de una reserva
+--
+--   pending ──► confirmed ──► completed | no_show | cancelled
+--      │
+--      ├──► rejected    (el dueño la rechaza, con motivo)
+--      ├──► cancelled   (el cliente la cancela)
+--      └──► expired     (nadie respondió a tiempo: se libera el lugar)
+--
+-- Una reserva pendiente ocupa su lugar sólo hasta `expires_at`: 24 horas para
+-- que el negocio responda, o la hora de la reserva si llega antes. Sin este
+-- plazo un pedido que el dueño nunca miró bloqueaba ese turno para siempre.
+--
+-- La seña (deposit_status) acompaña a la reserva:
+--   none       el local no pide seña
+--   pending    comprobante adjuntado, el dueño tiene que verificarlo
+--   paid       el dueño la verificó al confirmar la reserva
+--   to_refund  la reserva no se concretó antes de confirmarse (rechazada,
+--              cancelada o vencida): el negocio tiene que devolverla
+--   refunded   el dueño marcó que la devolvió
+-- No existe "pendiente de comprobante": sin comprobante la reserva no se crea.
+-- ---------------------------------------------------------------------------
+alter table tesisreserva.reservations
+  add column if not exists expires_at timestamptz;
+
+alter table tesisreserva.reservations drop constraint if exists reservations_status_check;
+alter table tesisreserva.reservations
+  add constraint reservations_status_check check (
+    status in ('pending', 'confirmed', 'rejected', 'cancelled', 'completed', 'no_show', 'expired')
+  );
+
+alter table tesisreserva.reservations drop constraint if exists reservations_deposit_status_check;
+alter table tesisreserva.reservations
+  add constraint reservations_deposit_status_check check (
+    deposit_status in ('none', 'pending', 'paid', 'to_refund', 'refunded', 'failed')
+  );
+
+/** Cuánto tiene el negocio para responder un pedido. */
+create or replace function tesisreserva.plazo_respuesta()
+returns interval
+language sql
+immutable
+as $$ select interval '24 hours' $$;
+
+/**
+ * Si una reserva ocupa lugar en la agenda.
+ *
+ * Una pendiente cuyo plazo ya pasó deja de ocupar en ese mismo momento,
+ * aunque la tarea que la marca como vencida corra unos minutos después.
+ */
+create or replace function tesisreserva.ocupa_lugar(p_status text, p_expires timestamptz)
+returns boolean
+language sql
+stable
+as $$
+  select p_status = 'confirmed'
+      or (p_status = 'pending' and (p_expires is null or p_expires > now()))
+$$;
+
 create index if not exists idx_reservations_client   on tesisreserva.reservations (client_id);
 create index if not exists idx_reservations_business on tesisreserva.reservations (business_id);
 create index if not exists idx_reservations_date     on tesisreserva.reservations (reservation_date);
@@ -632,6 +697,14 @@ create table if not exists tesisreserva.notifications (
              'reservation_rejected', 'reservation_cancelled', 'review_reply')
   )
 );
+
+alter table tesisreserva.notifications drop constraint if exists notifications_type_check;
+alter table tesisreserva.notifications
+  add constraint notifications_type_check check (
+    type in ('general', 'reservation_created', 'reservation_confirmed',
+             'reservation_rejected', 'reservation_cancelled', 'reservation_expired',
+             'review_reply')
+  );
 
 create index if not exists idx_notifications_user
   on tesisreserva.notifications (user_id, created_at desc);
@@ -913,23 +986,11 @@ create policy reservations_select_owner on tesisreserva.reservations
   for select to authenticated
   using (tesisreserva.is_business_owner(business_id));
 
--- El alta normal va por el RPC create_reservation, pero dejamos la política
--- coherente: un cliente sólo puede insertar reservas a su propio nombre.
-create policy reservations_insert_own on tesisreserva.reservations
-  for insert to authenticated
-  with check (client_id = auth.uid());
-
--- El cliente sólo puede cancelar (nunca confirmar) su propia reserva.
-create policy reservations_update_client on tesisreserva.reservations
-  for update to authenticated
-  using (client_id = auth.uid() and status in ('pending', 'confirmed'))
-  with check (client_id = auth.uid() and status = 'cancelled');
-
--- El dueño gestiona los estados de las reservas de sus negocios.
-create policy reservations_update_owner on tesisreserva.reservations
-  for update to authenticated
-  using (tesisreserva.is_business_owner(business_id) or tesisreserva.is_admin())
-  with check (tesisreserva.is_business_owner(business_id) or tesisreserva.is_admin());
+-- No hay políticas de INSERT ni UPDATE: crear y cambiar reservas se hace
+-- SÓLO por create_reservation, set_reservation_status y
+-- mark_deposit_refunded, que validan horario, capacidad, plazo y quién puede
+-- hacer qué. Con un UPDATE directo un cliente podía pasarse a 'confirmed', y
+-- un dueño revivir una reserva vencida cuyo lugar ya tomó otra persona.
 
 -- ---- reservation_status_history --------------------------------------------
 drop policy if exists res_history_read   on tesisreserva.reservation_status_history;
@@ -946,15 +1007,8 @@ create policy res_history_read on tesisreserva.reservation_status_history
     or tesisreserva.is_admin()
   );
 
-create policy res_history_insert on tesisreserva.reservation_status_history
-  for insert to authenticated
-  with check (
-    exists (
-      select 1 from tesisreserva.reservations r
-      where r.id = reservation_id
-        and (r.client_id = auth.uid() or tesisreserva.is_business_owner(r.business_id))
-    )
-  );
+-- El historial lo escriben sólo las funciones: nadie puede inventarse una
+-- entrada a mano.
 
 -- ---- reviews ---------------------------------------------------------------
 drop policy if exists reviews_read          on tesisreserva.reviews;
@@ -1152,7 +1206,7 @@ begin
     left join tesisreserva.reservations r
       on r.business_id = p_business_id
      and r.reservation_date = p_date
-     and r.status in ('pending', 'confirmed')
+     and tesisreserva.ocupa_lugar(r.status, r.expires_at)
      and (p_party_size is null or v_biz.reservation_type <> 'table' or r.party_size = p_party_size)
      -- solapamiento de intervalos [inicio, inicio + duración)
      and (p_date + s.t, (p_date + s.t) + make_interval(mins => v_duration))
@@ -1212,7 +1266,7 @@ as $$
                from tesisreserva.reservations r
               where r.business_id = p_business_id
                 and r.catalog_item_id = i.id
-                and r.status in ('pending', 'confirmed')
+                and tesisreserva.ocupa_lugar(r.status, r.expires_at)
                 and r.check_out_date is not null
                 and daterange(p_check_in, p_check_out)
                     && daterange(r.reservation_date, r.check_out_date)
@@ -1257,6 +1311,8 @@ declare
   v_used     int;
   v_duration int;
   v_deposit  numeric(12,2) := 0;
+  v_status   text;
+  v_expira   timestamptz;
   v_res      tesisreserva.reservations%rowtype;
 begin
   -- 1. usuario
@@ -1347,7 +1403,7 @@ begin
       from tesisreserva.reservations r
      where r.business_id = p_business_id
        and r.catalog_item_id = p_catalog_item_id
-       and r.status in ('pending', 'confirmed')
+       and tesisreserva.ocupa_lugar(r.status, r.expires_at)
        and r.check_out_date is not null
        and daterange(p_date, p_check_out) && daterange(r.reservation_date, r.check_out_date);
 
@@ -1360,23 +1416,32 @@ begin
                  * case when v_biz.deposit_per_person then coalesce(p_party_size, 1) else 1 end;
     end if;
 
+    -- Se acepta sola sólo si el dueño lo eligió y no hay seña que verificar.
+    -- Si queda pendiente, el negocio tiene hasta `expires_at` para responder.
+    v_status := case when v_biz.auto_confirm and v_deposit = 0 then 'confirmed' else 'pending' end;
+    v_expira := case when v_status = 'pending' then
+                  least(now() + tesisreserva.plazo_respuesta(),
+                        (p_date + p_time) at time zone tesisreserva.zona_horaria())
+                end;
+
     insert into tesisreserva.reservations (
       reservation_code, client_id, business_id, catalog_item_id,
       reservation_date, check_out_date, reservation_time, party_size, duration_minutes,
       status, notes, deposit_required, deposit_amount, deposit_status,
-      deposit_proof_url, deposit_proof_at
+      deposit_proof_url, deposit_proof_at, expires_at
     ) values (
       tesisreserva.gen_reservation_code(), v_uid, p_business_id, p_catalog_item_id,
       p_date, p_check_out, p_time, p_party_size, v_duration,
-      'pending', nullif(trim(coalesce(p_notes, '')), ''),
+      v_status, nullif(trim(coalesce(p_notes, '')), ''),
       v_deposit > 0, v_deposit,
       case when v_deposit > 0 then 'pending' else 'none' end,
       nullif(trim(coalesce(p_deposit_proof, '')), ''),
-      case when p_deposit_proof is not null then now() end
+      case when p_deposit_proof is not null then now() end,
+      v_expira
     ) returning * into v_res;
 
     insert into tesisreserva.reservation_status_history (reservation_id, previous_status, new_status, changed_by)
-    values (v_res.id, null, 'pending', v_uid);
+    values (v_res.id, null, v_status, v_uid);
 
     if v_deposit > 0 then
       insert into tesisreserva.reservation_payments (reservation_id, amount, currency, status)
@@ -1385,7 +1450,7 @@ begin
 
     insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
     values (
-      v_biz.owner_id, 'Nueva reserva · ' || v_biz.name,
+      v_biz.owner_id, case when v_status = 'confirmed' then 'Nueva reserva confirmada · ' else 'Nueva reserva · ' end || v_biz.name,
       coalesce(v_item.name || ': ', '') || 'del ' || to_char(p_date, 'DD/MM')
         || ' al ' || to_char(p_check_out, 'DD/MM') || '.',
       'reservation_created', v_res.id
@@ -1440,7 +1505,7 @@ begin
     from tesisreserva.reservations r
     where r.business_id = p_business_id
       and r.reservation_date = p_date
-      and r.status in ('pending', 'confirmed')
+      and tesisreserva.ocupa_lugar(r.status, r.expires_at)
       and r.party_size = p_party_size
       and (p_date + p_time, (p_date + p_time) + make_interval(mins => v_duration))
           overlaps
@@ -1452,7 +1517,7 @@ begin
     from tesisreserva.reservations r
     where r.business_id = p_business_id
       and r.reservation_date = p_date
-      and r.status in ('pending', 'confirmed')
+      and tesisreserva.ocupa_lugar(r.status, r.expires_at)
       and (p_date + p_time, (p_date + p_time) + make_interval(mins => v_duration))
           overlaps
           (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes));
@@ -1468,25 +1533,34 @@ begin
                * case when v_biz.deposit_per_person then coalesce(p_party_size, 1) else 1 end;
   end if;
 
+  -- Se acepta sola sólo si el dueño lo eligió y no hay seña que verificar.
+  -- Si queda pendiente, el negocio tiene hasta `expires_at` para responder.
+  v_status := case when v_biz.auto_confirm and v_deposit = 0 then 'confirmed' else 'pending' end;
+  v_expira := case when v_status = 'pending' then
+                least(now() + tesisreserva.plazo_respuesta(),
+                      (p_date + p_time) at time zone tesisreserva.zona_horaria())
+              end;
+
   -- 7. alta
   insert into tesisreserva.reservations (
     reservation_code, client_id, business_id, catalog_item_id,
     reservation_date, reservation_time, party_size, duration_minutes,
     status, notes, deposit_required, deposit_amount, deposit_status,
-    deposit_proof_url, deposit_proof_at
+    deposit_proof_url, deposit_proof_at, expires_at
   ) values (
     tesisreserva.gen_reservation_code(), v_uid, p_business_id, p_catalog_item_id,
     p_date, p_time, p_party_size, v_duration,
-    'pending', nullif(trim(coalesce(p_notes, '')), ''),
+    v_status, nullif(trim(coalesce(p_notes, '')), ''),
     v_deposit > 0, v_deposit,
     case when v_deposit > 0 then 'pending' else 'none' end,
     nullif(trim(coalesce(p_deposit_proof, '')), ''),
-    case when p_deposit_proof is not null then now() end
+    case when p_deposit_proof is not null then now() end,
+    v_expira
   )
   returning * into v_res;
 
   insert into tesisreserva.reservation_status_history (reservation_id, previous_status, new_status, changed_by)
-  values (v_res.id, null, 'pending', v_uid);
+  values (v_res.id, null, v_status, v_uid);
 
   if v_deposit > 0 then
     insert into tesisreserva.reservation_payments (reservation_id, amount, currency, status)
@@ -1500,7 +1574,7 @@ begin
   insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
   values (
     v_biz.owner_id,
-    'Nueva reserva · ' || v_biz.name,
+    case when v_status = 'confirmed' then 'Nueva reserva confirmada · ' else 'Nueva reserva · ' end || v_biz.name,
     'Tenés una nueva reserva para el ' || to_char(p_date, 'DD/MM') || ' a las ' || to_char(p_time, 'HH24:MI') || '.',
     'reservation_created',
     v_res.id
@@ -1558,8 +1632,24 @@ begin
     end if;
   end if;
 
-  if v_res.status in ('cancelled', 'rejected', 'completed', 'no_show') then
-    raise exception 'La reserva ya está %.', v_res.status using errcode = '22023';
+  if v_res.status in ('cancelled', 'rejected', 'completed', 'no_show', 'expired') then
+    raise exception 'La reserva ya está %.',
+      case v_res.status
+        when 'cancelled' then 'cancelada'
+        when 'rejected'  then 'rechazada'
+        when 'completed' then 'cerrada como asistida'
+        when 'no_show'   then 'cerrada como no asistida'
+        else 'vencida'
+      end
+      using errcode = '22023';
+  end if;
+
+  -- Pasado el plazo ya no se responde: el lugar quedó libre y otra persona
+  -- puede haberlo tomado. La tarea programada la marca como vencida.
+  if v_res.status = 'pending' and v_res.expires_at is not null
+     and v_res.expires_at <= now() then
+    raise exception 'Esta reserva venció: pasó el plazo para responderla.'
+      using errcode = '22023';
   end if;
 
   -- Marcar asistencia es registrar algo que ya ocurrió, así que tiene dos
@@ -1586,6 +1676,15 @@ begin
 
   update tesisreserva.reservations
      set status              = p_status,
+         expires_at          = null,
+         -- Confirmar es dar por buena la transferencia. Si la reserva no
+         -- llega a confirmarse, lo que se transfirió hay que devolverlo.
+         deposit_status      = case
+                                 when deposit_status <> 'pending' then deposit_status
+                                 when p_status = 'confirmed' then 'paid'
+                                 when p_status in ('cancelled', 'rejected') then 'to_refund'
+                                 else deposit_status
+                               end,
          cancelled_at        = case when p_status in ('cancelled', 'rejected') then now() else cancelled_at end,
          cancellation_reason = case when p_status in ('cancelled', 'rejected')
                                     then nullif(trim(coalesce(p_reason, '')), '') else cancellation_reason end
@@ -1594,6 +1693,10 @@ begin
 
   insert into tesisreserva.reservation_status_history (reservation_id, previous_status, new_status, changed_by)
   values (v_res.id, v_prev, p_status, v_uid);
+
+  update tesisreserva.reservation_payments
+     set status = case v_res.deposit_status when 'paid' then 'paid' when 'to_refund' then 'failed' else status end
+   where reservation_id = v_res.id;
 
   -- Notificar a la contraparte
   if v_is_owner then
@@ -1631,6 +1734,62 @@ begin
       'reservation_cancelled', v_res.id
     );
   end if;
+
+  return v_res;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+--  El dueño marca que devolvió la seña
+-- ---------------------------------------------------------------------------
+/**
+ * Cierra el ciclo de la seña de una reserva que no se concretó.
+ *
+ * La app no mueve plata: el dueño transfiere por su cuenta y acá deja
+ * constancia, y el cliente recibe el aviso. Vale también para una reserva
+ * confirmada que se canceló, si el negocio decide devolver lo que cobró.
+ */
+create or replace function tesisreserva.mark_deposit_refunded(p_reservation_id uuid)
+returns tesisreserva.reservations
+language plpgsql
+security definer
+set search_path = tesisreserva, public
+as $$
+declare
+  v_res tesisreserva.reservations%rowtype;
+  v_biz tesisreserva.businesses%rowtype;
+begin
+  select * into v_res from tesisreserva.reservations where id = p_reservation_id for update;
+  if not found then
+    raise exception 'La reserva no existe.' using errcode = 'P0002';
+  end if;
+
+  select * into v_biz from tesisreserva.businesses where id = v_res.business_id;
+  if v_biz.owner_id is distinct from auth.uid() then
+    raise exception 'No tenés permiso sobre esta reserva.' using errcode = '42501';
+  end if;
+
+  if not (v_res.deposit_status = 'to_refund'
+          or (v_res.deposit_status = 'paid' and v_res.status = 'cancelled')) then
+    raise exception 'Esta reserva no tiene una seña para devolver.' using errcode = '22023';
+  end if;
+
+  update tesisreserva.reservations
+     set deposit_status = 'refunded'
+   where id = p_reservation_id
+   returning * into v_res;
+
+  update tesisreserva.reservation_payments
+     set status = 'refunded'
+   where reservation_id = v_res.id;
+
+  insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
+  values (
+    v_res.client_id, 'Te devolvieron la seña',
+    v_biz.name || ' marcó que te devolvió la seña de la reserva del ' ||
+      to_char(v_res.reservation_date, 'DD/MM') || '.',
+    'general', v_res.id
+  );
 
   return v_res;
 end;
@@ -1989,8 +2148,8 @@ grant insert, update, delete on tesisreserva.catalog_categories  to authenticate
 grant insert, update, delete on tesisreserva.catalog_items       to authenticated;
 grant insert, update, delete on tesisreserva.promotions          to authenticated;
 
-grant select, insert, update on tesisreserva.reservations               to authenticated;
-grant select, insert         on tesisreserva.reservation_status_history to authenticated;
+grant select                 on tesisreserva.reservations               to authenticated;
+grant select                 on tesisreserva.reservation_status_history to authenticated;
 grant insert, update         on tesisreserva.reviews                    to authenticated;
 grant select                 on tesisreserva.reservation_payments       to authenticated;
 grant select, update         on tesisreserva.notifications              to authenticated;
@@ -1999,6 +2158,7 @@ grant select, update         on tesisreserva.notifications              to authe
 grant execute on function tesisreserva.get_availability(uuid, date, int, uuid)                  to anon, authenticated;
 grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date, text) to authenticated;
 grant execute on function tesisreserva.set_reservation_status(uuid, text, text)                 to authenticated;
+grant execute on function tesisreserva.mark_deposit_refunded(uuid)                             to authenticated;
 grant execute on function tesisreserva.reply_to_review(uuid, text)                              to authenticated;
 grant execute on function tesisreserva.become_owner()                                          to authenticated;
 grant execute on function tesisreserva.business_stats(uuid)                                     to authenticated;
@@ -2255,5 +2415,92 @@ exception when check_violation then
   raise notice 'Hay negocios fuera de Ñemby: la regla rige sólo para lo nuevo.';
 end;
 $$;
+
+-- ============================================================================
+--  Vencimiento de las reservas sin respuesta
+-- ============================================================================
+
+/**
+ * Pasa a 'expired' las pendientes cuyo plazo terminó y avisa a las dos partes.
+ *
+ * La disponibilidad ya no las cuenta desde el segundo en que vencen
+ * (ocupa_lugar); esto deja el estado escrito para que el cliente y el dueño
+ * vean qué pasó, y marca la seña como "a devolver".
+ */
+create or replace function tesisreserva.vencer_reservas()
+returns int
+language plpgsql
+security definer
+set search_path = tesisreserva, public
+as $$
+declare
+  v_res  record;
+  v_n    int := 0;
+begin
+  for v_res in
+    update tesisreserva.reservations r
+       set status              = 'expired',
+           cancelled_at        = now(),
+           cancellation_reason = 'El negocio no respondió a tiempo.',
+           deposit_status      = case when r.deposit_status = 'pending' then 'to_refund' else r.deposit_status end
+      from tesisreserva.businesses b
+     where b.id = r.business_id
+       and r.status = 'pending'
+       and r.expires_at is not null
+       and r.expires_at <= now()
+    returning r.*, b.owner_id, b.name as business_name
+  loop
+    v_n := v_n + 1;
+
+    insert into tesisreserva.reservation_status_history (reservation_id, previous_status, new_status, changed_by)
+    values (v_res.id, 'pending', 'expired', null);
+
+    update tesisreserva.reservation_payments set status = 'failed'
+     where reservation_id = v_res.id and v_res.deposit_status = 'to_refund';
+
+    insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
+    values (
+      v_res.client_id, 'Tu reserva venció',
+      v_res.business_name || ' no respondió a tiempo tu reserva del ' ||
+        to_char(v_res.reservation_date, 'DD/MM') || ' ' || to_char(v_res.reservation_time, 'HH24:MI') ||
+        ' h. El lugar quedó libre' ||
+        case when v_res.deposit_status = 'to_refund' then ' y el negocio tiene que devolverte la seña.' else '.' end,
+      'reservation_expired', v_res.id
+    );
+
+    insert into tesisreserva.notifications (user_id, title, body, type, reference_id)
+    values (
+      v_res.owner_id, 'Reserva vencida · ' || v_res.business_name,
+      'No respondiste a tiempo la reserva del ' || to_char(v_res.reservation_date, 'DD/MM') || ' ' ||
+        to_char(v_res.reservation_time, 'HH24:MI') || ' h y se liberó el lugar' ||
+        case when v_res.deposit_status = 'to_refund' then '. Devolvé la seña al cliente.' else '.' end,
+      'reservation_expired', v_res.id
+    );
+  end loop;
+
+  return v_n;
+end;
+$$;
+
+revoke all on function tesisreserva.vencer_reservas() from public, anon, authenticated;
+
+-- Las reservas pendientes que ya existían reciben el mismo plazo.
+update tesisreserva.reservations
+   set expires_at = least(created_at + tesisreserva.plazo_respuesta(),
+                          (reservation_date + reservation_time) at time zone tesisreserva.zona_horaria())
+ where status = 'pending' and expires_at is null;
+
+-- La tarea corre cada 5 minutos dentro de la base (pg_cron), sin depender de
+-- un servidor aparte. Si la extensión no está disponible la migración sigue:
+-- la disponibilidad ya ignora las vencidas igual.
+do $cron$
+begin
+  create extension if not exists pg_cron;
+  perform cron.schedule('tesisreserva-vencer-reservas', '*/5 * * * *',
+                        'select tesisreserva.vencer_reservas()');
+exception when others then
+  raise notice 'pg_cron no disponible (%): el vencimiento no se programó.', sqlerrm;
+end;
+$cron$;
 
 notify pgrst, 'reload schema';

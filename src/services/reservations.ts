@@ -126,6 +126,18 @@ export async function setReservationStatus(
   return (Array.isArray(data) ? data[0] : data) as Reservation;
 }
 
+/**
+ * El dueño deja constancia de que devolvió la seña de una reserva que no se
+ * concretó. La plata la transfiere él: la app sólo registra y avisa.
+ */
+export async function markDepositRefunded(reservationId: string): Promise<Reservation> {
+  const { data, error } = await supabase.rpc('mark_deposit_refunded', {
+    p_reservation_id: reservationId,
+  });
+  if (error) throw new Error(friendlyError(error, 'No pudimos registrar la devolución.'));
+  return (Array.isArray(data) ? data[0] : data) as Reservation;
+}
+
 /** Reservas del cliente autenticado. */
 export async function fetchMyReservations(
   clientId: string,

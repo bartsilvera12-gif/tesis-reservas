@@ -88,6 +88,7 @@ export function MyBusiness() {
           </>
         )}
         <DepositCard onSaved={reload} toast={toast} />
+        <AceptacionCard onSaved={reload} toast={toast} />
         <VisibilidadCard onSaved={reload} toast={toast} />
         <OtroNegocio />
         <AccountCard />
@@ -1312,6 +1313,76 @@ function DepositCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast: 
  * quiere el 99% de las veces — cerrar por vacaciones, por refacción, o dejar
  * de recibir gente un tiempo — y se puede volver atrás.
  */
+/**
+ * Cómo se aceptan las reservas: el dueño las revisa una por una, o las que no
+ * piden seña se confirman solas.
+ *
+ * Con seña nunca es automático: alguien tiene que mirar en el banco que la
+ * transferencia llegó. Por eso, si la seña está activa, el interruptor se ve
+ * pero explica que no aplica.
+ */
+function AceptacionCard({
+  onSaved,
+  toast,
+}: {
+  onSaved: () => Promise<void>;
+  toast: Toast;
+}) {
+  const { active } = useOwnerBusiness();
+  const [busy, setBusy] = useState(false);
+
+  if (!active) return null;
+
+  const cobraSena = active.deposit_enabled && active.deposit_amount > 0;
+  const automatico = active.auto_confirm && !cobraSena;
+
+  async function cambiar(next: boolean) {
+    setBusy(true);
+    try {
+      await updateBusiness(active!.id, { auto_confirm: next });
+      await onSaved();
+      toast.success(
+        next
+          ? 'Las reservas sin seña se confirman solas.'
+          : 'Vas a aceptar cada reserva vos.',
+      );
+    } catch (err) {
+      toast.fail(err instanceof Error ? err.message : 'No pudimos guardar el cambio.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Seccion
+      titulo="Cómo aceptás las reservas"
+      resumen={automatico ? 'Se confirman solas' : 'Las revisás y respondés vos'}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800 }}>Aceptar automáticamente</div>
+          <div style={{ fontSize: 12, color: C.sub, marginTop: 2, lineHeight: 1.45 }}>
+            {cobraSena
+              ? 'No se usa mientras pidas seña: tenés que verificar cada comprobante.'
+              : 'Si hay lugar, la reserva queda confirmada al instante.'}
+          </div>
+        </div>
+        <Switch
+          checked={active.auto_confirm}
+          disabled={busy || cobraSena}
+          onChange={(next) => void cambiar(next)}
+        />
+      </div>
+
+      <div style={{ fontSize: 11.5, color: C.sub, marginTop: 12, lineHeight: 1.5 }}>
+        Si las revisás vos, tenés <strong>24 horas</strong> para responder cada reserva (o
+        hasta la hora de la reserva, si es antes). Pasado ese plazo vence sola, se libera el
+        lugar y le avisamos al cliente.
+      </div>
+    </Seccion>
+  );
+}
+
 function VisibilidadCard({
   onSaved,
   toast,

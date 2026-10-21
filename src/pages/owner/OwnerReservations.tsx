@@ -4,13 +4,25 @@ import { useOwnerBusiness } from '@/context/OwnerBusinessContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useToast } from '@/hooks/useToast';
 import { useConfirm } from '@/hooks/useConfirm';
-import { fetchBusinessReservations, setReservationStatus } from '@/services/reservations';
+import {
+  fetchBusinessReservations,
+  markDepositRefunded,
+  setReservationStatus,
+} from '@/services/reservations';
 import { signedProofUrl } from '@/services/storage';
 import { Chip, Loading, PageTitle, StateView, StatusChip } from '@/components/ui';
 import { C } from '@/lib/theme';
-import { compactDate, dayShort, money, shortTime, toISODate } from '@/lib/format';
+import {
+  compactDate,
+  cuandoVence,
+  dayShort,
+  estadoVisible,
+  money,
+  shortTime,
+  toISODate,
+} from '@/lib/format';
 import { usaCantidadDePersonas } from '@/lib/rubros';
-import type { ReservationStatus } from '@/types/db';
+import type { DepositStatus, ReservationStatus, ReservationWithRelations } from '@/types/db';
 
 /**
  * Días del filtro: una semana hacia atrás y una hacia adelante.
@@ -68,6 +80,22 @@ const AVISO: Partial<Record<ReservationStatus, string>> = {
   no_show: 'Marcada como no asistió.',
 };
 
+/** Cómo está la seña, dicho para el dueño. */
+const SENA: Partial<Record<DepositStatus, string>> = {
+  pending: 'a verificar',
+  paid: 'verificada',
+  to_refund: 'a devolver al cliente',
+  refunded: 'devuelta',
+};
+
+/**
+ * Si corresponde ofrecer "Ya le devolví la seña". Siempre cuando la reserva
+ * no se concretó; si el cliente canceló una ya confirmada, devolver o no
+ * depende de lo que acuerden, así que el botón está pero no es obligatorio.
+ */
+const puedeDevolver = (r: ReservationWithRelations) =>
+  r.deposit_status === 'to_refund' || (r.deposit_status === 'paid' && r.status === 'cancelled');
+
 export function OwnerReservations() {
   const { active } = useOwnerBusiness();
   const toast = useToast();
@@ -93,7 +121,9 @@ export function OwnerReservations() {
 
   const pendientesQuery = useAsync(
     async () =>
-      (await fetchBusinessReservations(active!.id, null)).filter((r) => r.status === 'pending'),
+      (await fetchBusinessReservations(active!.id, null)).filter(
+        (r) => estadoVisible(r) === 'pending',
+      ),
     [active?.id],
     { enabled: Boolean(active) },
   );
@@ -164,25 +194,48 @@ export function OwnerReservations() {
     await act(id, 'rejected', texto || undefined);
   }
 
+  /** Lo que devolvió el servidor reemplaza a la tarjeta: estado y seña. */
+  function reflejar(id: string, cambios: Partial<ReservationWithRelations>) {
+    const aplicar = (prev: ReservationWithRelations[] | null) =>
+      prev ? prev.map((r) => (r.id === id ? { ...r, ...cambios } : r)) : prev;
+    query.setData(aplicar);
+    // En "Por responder" la tarjeta queda a la vista con su nuevo estado
+    // hasta que se cambie de filtro: que desaparezca de golpe desorienta.
+    pendientesQuery.setData(aplicar);
+  }
+
+  async function devolverSena(r: ReservationWithRelations) {
+    const { ok } = await confirm({
+      title: '¿Ya devolviste la seña?',
+      message: `Marcalo cuando le hayas transferido ${money(r.deposit_amount)} al cliente. Le avisamos que se la devolviste.`,
+      confirmLabel: 'Sí, ya la devolví',
+      cancelLabel: 'Todavía no',
+    });
+    if (!ok) return;
+    setWorking(r.id);
+    try {
+      const nueva = await markDepositRefunded(r.id);
+      reflejar(r.id, { deposit_status: nueva.deposit_status });
+      toast.success('Listo: le avisamos al cliente.');
+    } catch (err) {
+      toast.fail(err instanceof Error ? err.message : 'No pudimos registrar la devolución.');
+    } finally {
+      setWorking(null);
+    }
+  }
+
   async function act(id: string, status: ReservationStatus, reason?: string) {
     setWorking(id);
     try {
-      await setReservationStatus(id, status, reason);
-
+      const nueva = await setReservationStatus(id, status, reason);
       // Refresco inmediato en pantalla tras la respuesta correcta del servidor.
-      query.setData((prev) =>
-        prev ? prev.map((r) => (r.id === id ? { ...r, status } : r)) : prev,
-      );
-      // En "Por responder" la tarjeta queda a la vista con su nuevo estado
-      // hasta que se cambie de filtro: que desaparezca de golpe desorienta.
-      pendientesQuery.setData((prev) =>
-        prev ? prev.map((r) => (r.id === id ? { ...r, status } : r)) : prev,
-      );
+      reflejar(id, { status, deposit_status: nueva.deposit_status, expires_at: null });
 
       toast.success(AVISO[status] ?? 'Reserva actualizada.');
     } catch (err) {
       toast.fail(err instanceof Error ? err.message : 'No pudimos actualizar la reserva.');
       query.reload();
+      pendientesQuery.reload();
     } finally {
       setWorking(null);
     }
@@ -286,7 +339,7 @@ export function OwnerReservations() {
                 >
                   {r.client?.full_name || 'Cliente'}
                 </div>
-                <StatusChip status={r.status} />
+                <StatusChip status={estadoVisible(r)} />
               </div>
 
               <div style={{ fontSize: 12.5, color: C.sub, marginTop: 4, lineHeight: 1.5 }}>
@@ -337,8 +390,7 @@ export function OwnerReservations() {
                   }}
                 >
                   <div style={{ fontSize: 11.5, color: C.warn, fontWeight: 700 }}>
-                    Seña {money(r.deposit_amount)} ·{' '}
-                    {r.deposit_status === 'paid' ? 'confirmada' : 'a verificar'}
+                    Seña {money(r.deposit_amount)} · {SENA[r.deposit_status] ?? 'a verificar'}
                   </div>
 
                   {/* El comprobante es lo que el dueño necesita mirar antes de
@@ -373,6 +425,26 @@ export function OwnerReservations() {
                       Sin comprobante cargado.
                     </div>
                   )}
+
+                  {puedeDevolver(r) && (
+                    <button
+                      disabled={working === r.id}
+                      onClick={() => void devolverSena(r)}
+                      style={{
+                        marginTop: 4,
+                        width: '100%',
+                        minHeight: 42,
+                        borderRadius: 10,
+                        border: `1.5px solid ${C.warnLine}`,
+                        background: C.surface,
+                        color: C.terracottaDark,
+                        fontSize: 12.5,
+                        fontWeight: 800,
+                      }}
+                    >
+                      Ya le devolví la seña
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -391,7 +463,21 @@ export function OwnerReservations() {
                 </a>
               )}
 
-              {r.status === 'pending' && (
+              {/* Pasado este momento la reserva vence sola y el lugar se
+                  libera: el dueño tiene que saber hasta cuándo puede decidir. */}
+              {estadoVisible(r) === 'pending' && r.expires_at && (
+                <div style={{ fontSize: 11.5, color: C.warn, fontWeight: 700, marginTop: 8 }}>
+                  Respondé antes de {cuandoVence(r.expires_at)}
+                </div>
+              )}
+
+              {estadoVisible(r) === 'expired' && (
+                <div style={{ fontSize: 11.5, color: C.sub, marginTop: 8, lineHeight: 1.45 }}>
+                  Venció sin respuesta y el lugar se liberó.
+                </div>
+              )}
+
+              {estadoVisible(r) === 'pending' && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                   <button
                     disabled={working === r.id}

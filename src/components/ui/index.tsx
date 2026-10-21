@@ -218,6 +218,7 @@ export function StatusChip({ status }: { status: ReservationStatus }) {
     rejected: { background: C.dangerBg, color: C.danger },
     completed: { background: '#EDF3EC', color: '#4E6B4F' },
     no_show: { background: C.disabledBg, color: C.sub },
+    expired: { background: C.disabledBg, color: C.sub },
   };
 
   return (

@@ -13,6 +13,7 @@ const ICON_BY_TYPE: Record<string, string> = {
   reservation_confirmed: ICONS.calendar,
   reservation_rejected: ICONS.calendar,
   reservation_cancelled: ICONS.calendar,
+  reservation_expired: ICONS.calendar,
   review_reply: ICONS.reviews,
   general: ICONS.bell,
 };

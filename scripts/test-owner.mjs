@@ -904,7 +904,8 @@ try {
 
     // Confirmar una deja de contarla: lo pendiente es lo que espera respuesta.
     await c.query(
-      `update tesisreserva.reservations set status='confirmed'
+      `select tesisreserva.set_reservation_status(id, 'confirmed')
+         from tesisreserva.reservations
         where business_id=$1 and status='pending'`, [idPrimero]);
     const tras = await c.query(`select * from tesisreserva.pending_by_business()`);
     const trasId = Object.fromEntries(tras.rows.map((r) => [r.business_id, r]));

@@ -14,8 +14,16 @@ import {
   Chip,
 } from '@/components/ui';
 import { C } from '@/lib/theme';
-import { friendlyDate, money, shortTime } from '@/lib/format';
-import type { ReservationWithRelations } from '@/types/db';
+import { cuandoVence, estadoVisible, friendlyDate, money, shortTime } from '@/lib/format';
+import type { DepositStatus, ReservationWithRelations } from '@/types/db';
+
+/** Cómo está la seña, dicho para quien reservó. */
+const SENA: Partial<Record<DepositStatus, string>> = {
+  pending: 'comprobante enviado',
+  paid: 'verificada',
+  to_refund: 'el negocio te la tiene que devolver',
+  refunded: 'te la devolvieron',
+};
 
 type Filter = 'upcoming' | 'past';
 
@@ -46,7 +54,8 @@ export function MyBookings() {
     for (const r of all) {
       const [y, m, d] = r.reservation_date.split('-').map(Number);
       const when = new Date(y, m - 1, d);
-      const isActive = r.status === 'pending' || r.status === 'confirmed';
+      const estado = estadoVisible(r);
+      const isActive = estado === 'pending' || estado === 'confirmed';
       if (when >= today && isActive) up.push(r);
       else old.push(r);
     }
@@ -165,7 +174,7 @@ export function MyBookings() {
                 >
                   {r.business?.name ?? 'Negocio'}
                 </div>
-                <StatusChip status={r.status} />
+                <StatusChip status={estadoVisible(r)} />
               </div>
 
               <div style={{ fontSize: 13, color: C.sub, marginTop: 5, lineHeight: 1.5 }}>
@@ -221,13 +230,15 @@ export function MyBookings() {
                     style={{
                       fontSize: 11.5,
                       // Con el comprobante subido ya no es algo pendiente del
-                      // cliente: deja de verse como aviso.
-                      color: r.deposit_proof_url ? C.sub : C.warn,
+                      // cliente: deja de verse como aviso. Sí lo es una seña
+                      // que el negocio le tiene que devolver.
+                      color: r.deposit_status === 'to_refund' ? C.warn : C.sub,
                       fontWeight: 600,
+                      textAlign: 'right',
                     }}
                   >
                     Seña {money(r.deposit_amount)}
-                    {r.deposit_proof_url ? ' · comprobante enviado' : ''}
+                    {SENA[r.deposit_status] ? ` · ${SENA[r.deposit_status]}` : ''}
                   </span>
                 )}
               </div>
@@ -235,7 +246,7 @@ export function MyBookings() {
               {/* Cuando el negocio explica por qué rechazó o canceló, el cliente
                   tiene que poder leerlo: el chip de estado solo no alcanza. */}
               {r.cancellation_reason &&
-                (r.status === 'rejected' || r.status === 'cancelled') && (
+                (r.status === 'rejected' || r.status === 'cancelled' || r.status === 'expired') && (
                   <div
                     style={{
                       fontSize: 12.5,
@@ -251,7 +262,21 @@ export function MyBookings() {
                   </div>
                 )}
 
-              {(r.status === 'pending' || r.status === 'confirmed') && (
+              {/* Que el cliente sepa que "pendiente" no es para siempre. */}
+              {estadoVisible(r) === 'pending' && r.expires_at && (
+                <div style={{ fontSize: 12, color: C.sub, marginTop: 8, lineHeight: 1.45 }}>
+                  El negocio tiene hasta {cuandoVence(r.expires_at)} para responder. Si no
+                  responde, la reserva vence y se libera el lugar.
+                </div>
+              )}
+
+              {estadoVisible(r) === 'expired' && !r.cancellation_reason && (
+                <div style={{ fontSize: 12, color: C.sub, marginTop: 8, lineHeight: 1.45 }}>
+                  El negocio no respondió a tiempo y la reserva venció.
+                </div>
+              )}
+
+              {(estadoVisible(r) === 'pending' || estadoVisible(r) === 'confirmed') && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                   <Button
                     variant="danger"

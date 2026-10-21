@@ -82,6 +82,14 @@ ${rol}
 - Si una reserva dice que el local NO pide seña, no hables de seña ni de
   comprobante para esa reserva: decir "todavía no cargaste la seña" confunde
   a quien no tiene nada que pagar.
+- Una reserva pendiente no espera para siempre: el negocio tiene 24 horas
+  para responder (o hasta la hora de la reserva, si es antes). Si no responde,
+  la reserva vence, se libera el lugar y, si había seña, el negocio tiene que
+  devolverla. El dueño marca la devolución en Reservas con "Ya le devolví la
+  seña".
+- Un negocio puede elegir aceptar automáticamente las reservas que no piden
+  seña (Negocio → Cómo aceptás las reservas): esas salen confirmadas al
+  instante. Las que piden seña siempre las revisa el dueño.
 
 ## Lo que NO podés hacer
 

@@ -100,10 +100,42 @@ const STATUS_LABEL: Record<ReservationStatus, string> = {
   cancelled: 'Cancelada',
   completed: 'Completada',
   no_show: 'No asistió',
+  expired: 'Vencida',
 };
 
 export const statusLabel = (status: ReservationStatus): string =>
   STATUS_LABEL[status] ?? status;
+
+/**
+ * El estado que hay que mostrar. Una pendiente cuyo plazo pasó ya está
+ * vencida aunque la base todavía no lo haya escrito: la tarea que la marca
+ * corre cada 5 minutos, y mientras tanto no tiene sentido ofrecer "Aceptar".
+ */
+export function estadoVisible(r: {
+  status: ReservationStatus;
+  expires_at?: string | null;
+}): ReservationStatus {
+  if (r.status === 'pending' && r.expires_at && new Date(r.expires_at).getTime() <= Date.now()) {
+    return 'expired';
+  }
+  return r.status;
+}
+
+/** 'hoy a las 10:00' / 'mañana a las 18:30' / 'el 24/10 a las 09:00'. */
+export function cuandoVence(iso: string): string {
+  const d = new Date(iso);
+  const hora = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const hoy = new Date();
+  const manana = new Date();
+  manana.setDate(hoy.getDate() + 1);
+  const dia =
+    d.toDateString() === hoy.toDateString()
+      ? 'hoy'
+      : d.toDateString() === manana.toDateString()
+        ? 'mañana'
+        : `el ${d.getDate()}/${d.getMonth() + 1}`;
+  return `${dia} a las ${hora}`;
+}
 
 /** '0,8 km' / '350 m' — formato paraguayo, coma decimal. */
 export function distanceLabel(km: number | null | undefined): string | null {

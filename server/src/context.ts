@@ -63,7 +63,8 @@ const estadoSena = (e: unknown, conComprobante = false): string => {
   return (
     {
       pending: 'PENDIENTE: todavía no subió el comprobante de la transferencia',
-      paid: 'ya pagada',
+      paid: 'verificada por el negocio',
+      to_refund: 'la reserva no se concretó: el negocio tiene que devolverla',
       refunded: 'devuelta',
       failed: 'el pago falló',
       none: 'sin seña',
@@ -83,6 +84,7 @@ const estadoReserva = (e: unknown): string =>
     cancelled: 'cancelada',
     completed: 'asistió',
     no_show: 'no asistió',
+    expired: 'vencida (el negocio no respondió a tiempo y se liberó el lugar)',
   })[String(e)] ?? String(e);
 
 type Nombrable = { name?: string } | null;

@@ -3,7 +3,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { supabase, friendlyError } from '@/lib/supabase';
 import { Button, Loading, StateView } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
-import { friendlyDate, money, shortTime } from '@/lib/format';
+import { cuandoVence, friendlyDate, money, shortTime } from '@/lib/format';
 import type { ReservationWithRelations } from '@/types/db';
 
 /**
@@ -40,6 +40,8 @@ export function ReservationConfirmed() {
   }
 
   const r = query.data;
+  // Si el negocio acepta solo las reservas sin seña, ya sale confirmada.
+  const confirmada = r.status === 'confirmed';
 
   // En una estadía lo que importa son las noches, no la hora de entrada.
   const detail = (
@@ -100,7 +102,7 @@ export function ReservationConfirmed() {
           animation: 'fadeUp .5s .15s both',
         }}
       >
-        ¡Reserva creada!
+        {confirmada ? '¡Reserva confirmada!' : '¡Reserva creada!'}
       </div>
 
       <div
@@ -151,8 +153,24 @@ export function ReservationConfirmed() {
           animation: 'fadeUp .5s .33s both',
         }}
       >
-        Queda <strong>pendiente</strong> hasta que el negocio la confirme. Te avisamos
-        cuando responda.
+        {confirmada ? (
+          <>
+            El negocio acepta las reservas al instante: <strong>ya está confirmada</strong>.
+            Te vamos a recordar antes de la hora.
+          </>
+        ) : (
+          <>
+            Queda <strong>pendiente</strong> hasta que el negocio la confirme. Te avisamos
+            cuando responda.
+            {r.expires_at && (
+              <>
+                {' '}
+                Si no responde antes de {cuandoVence(r.expires_at)}, la reserva vence y se
+                libera el lugar.
+              </>
+            )}
+          </>
+        )}
         {r.deposit_required && (
           <>
             <br />

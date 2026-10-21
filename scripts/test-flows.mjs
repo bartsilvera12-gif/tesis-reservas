@@ -214,9 +214,8 @@ try {
   await asUser(cliB);
   const seen = await c.query(`select id from tesisreserva.reservations where id=$1`, [res1.id]);
   ok('cliente B NO ve la reserva de A', seen.rows.length === 0);
-  const hijack = await c.query(
+  await expectFail('cliente B NO puede cancelar la de A',
     `update tesisreserva.reservations set status='cancelled' where id=$1`, [res1.id]);
-  ok('cliente B NO puede cancelar la de A', hijack.rowCount === 0);
   await expectFail('cliente B no puede confirmar por RPC',
     `select tesisreserva.set_reservation_status($1,'confirmed')`, [res1.id]);
 

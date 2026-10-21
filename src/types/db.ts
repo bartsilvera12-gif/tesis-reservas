@@ -16,9 +16,16 @@ export type ReservationStatus =
   | 'rejected'
   | 'cancelled'
   | 'completed'
-  | 'no_show';
+  | 'no_show'
+  /** El negocio no respondió dentro del plazo: se liberó el lugar. */
+  | 'expired';
 
-export type DepositStatus = 'none' | 'pending' | 'paid' | 'refunded' | 'failed';
+/**
+ * none: no pide seña · pending: comprobante enviado, a verificar ·
+ * paid: verificada al confirmar · to_refund: la reserva no se concretó y el
+ * negocio tiene que devolverla · refunded: el negocio marcó que la devolvió.
+ */
+export type DepositStatus = 'none' | 'pending' | 'paid' | 'to_refund' | 'refunded' | 'failed';
 
 export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'failed';
 
@@ -33,6 +40,7 @@ export type NotificationType =
   | 'reservation_confirmed'
   | 'reservation_rejected'
   | 'reservation_cancelled'
+  | 'reservation_expired'
   | 'review_reply';
 
 export interface Profile {
@@ -92,6 +100,8 @@ export interface Business {
   default_slot_duration_minutes: number;
   slot_step_minutes: number;
   max_concurrent_reservations: number;
+  /** Las reservas sin seña se confirman solas, sin esperar al dueño. */
+  auto_confirm: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -199,6 +209,8 @@ export interface Reservation {
   deposit_proof_at: string | null;
   /** Sólo hospedajes: día de salida. La noche de salida no se ocupa. */
   check_out_date: string | null;
+  /** Hasta cuándo el negocio puede responder una pendiente. */
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
   cancelled_at: string | null;

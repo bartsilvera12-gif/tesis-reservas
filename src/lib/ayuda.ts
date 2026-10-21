@@ -86,10 +86,12 @@ export const AYUDA_CLIENTE: SeccionAyuda[] = [
   {
     id: 'despues',
     titulo: 'Después de reservar',
-    resumen: 'Pendiente, confirmada o rechazada.',
+    resumen: 'Pendiente, confirmada, rechazada o vencida.',
     puntos: [
       'Aparece **¡Reserva creada!** con tu **código**.',
       'Queda **pendiente** hasta que el negocio la acepte. Te llega un aviso cuando responde.',
+      'Algunos negocios aceptan solos: ahí ves **¡Reserva confirmada!** al instante.',
+      'Si el negocio no responde en **24 horas** (o antes de la hora de la reserva), la reserva **vence** y se libera el lugar.',
       'La app te recuerda la reserva antes de que llegue la hora.',
     ],
     imagen: 'c11-reserva-creada',
@@ -103,7 +105,7 @@ export const AYUDA_CLIENTE: SeccionAyuda[] = [
       '**Cancelar:** tocá Cancelar en la reserva. El negocio recibe un aviso.',
       '**Reseñar:** en una reserva confirmada, dejá tus estrellas y tu opinión.',
     ],
-    nota: 'Si pagaste seña y cancelás, la devolución la arreglás con el negocio.',
+    nota: 'Si la reserva se rechaza o vence, el negocio te tiene que devolver la seña. Si cancelás una ya confirmada, la devolución la arreglás con el negocio.',
     imagen: 'c12-mis-reservas',
   },
   {
@@ -177,7 +179,7 @@ export const AYUDA_DUENIO: SeccionAyuda[] = [
       'Si pidió seña, tocá **Ver el comprobante** y fijate en tu banco que llegó.',
       'Tocá **Aceptar** o **Rechazar**. El cliente recibe un aviso.',
     ],
-    nota: 'Cuando llega la hora, marcá **Asistida** o **No asistió**.',
+    nota: 'Tenés **24 horas** para responder (o hasta la hora de la reserva, si es antes): cada tarjeta dice hasta cuándo. Si no respondés, vence sola y se libera el lugar. Cuando llega la hora, marcá **Asistida** o **No asistió**.',
     imagen: 'e02-por-responder',
   },
   {
@@ -186,7 +188,7 @@ export const AYUDA_DUENIO: SeccionAyuda[] = [
     resumen: 'Para que el cliente sepa qué hacer.',
     puntos: [
       'Al rechazar, escribí el **motivo**: *“¿te sirve a las 16?”*.',
-      'Si cobraste seña, acordate de devolverla: la app no mueve plata.',
+      'Si cobraste seña, devolvela por transferencia y tocá **Ya le devolví la seña**: el cliente recibe el aviso.',
     ],
     imagen: 'e05-rechazar',
   },
@@ -198,6 +200,7 @@ export const AYUDA_DUENIO: SeccionAyuda[] = [
       'En **Negocio**, cada sección se abre tocando su título.',
       'Lo que falta se ve en **amarillo**.',
       '**Datos del negocio → Editar** para cambiar la dirección o el pin.',
+      '**Cómo aceptás las reservas:** prendé **Aceptar automáticamente** para que las reservas sin seña se confirmen solas.',
       '**Visibilidad:** pausá el negocio si cerrás por un tiempo.',
     ],
     imagen: 'd07-negocio',
@@ -272,6 +275,11 @@ export const PREGUNTAS: { pregunta: string; respuesta: string }[] = [
   {
     pregunta: 'No aparece el horario que quiero.',
     respuesta: 'Ya está ocupado, ya pasó o el servicio no entra antes del cierre. Probá otro día.',
+  },
+  {
+    pregunta: 'Mi reserva dice “Vencida”. ¿Qué pasó?',
+    respuesta:
+      'El negocio no respondió a tiempo y se liberó el lugar. Podés reservar de nuevo. Si habías pagado seña, el negocio te la tiene que devolver.',
   },
   {
     pregunta: '¿La app me cobra algo?',
