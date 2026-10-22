@@ -14,7 +14,7 @@ import {
   Chip,
 } from '@/components/ui';
 import { C } from '@/lib/theme';
-import { cuandoVence, estadoVisible, friendlyDate, money, shortTime } from '@/lib/format';
+import { cuandoVence, estadoVisible, friendlyDate, money, personas, shortTime } from '@/lib/format';
 import type { DepositStatus, ReservationWithRelations } from '@/types/db';
 
 /** Cómo está la seña, dicho para quien reservó. */
@@ -198,12 +198,12 @@ export function MyBookings() {
                       // Qué alojamiento es: en un hospedaje con varias cabañas
                       // es el dato que distingue una reserva de otra.
                       r.catalog_item?.name,
-                      r.party_size ? `${r.party_size} personas` : null,
+                      r.party_size ? personas(r.party_size) : null,
                     ]
                   : [
                       friendlyDate(r.reservation_date),
                       `${shortTime(r.reservation_time)} h`,
-                      r.party_size ? `${r.party_size} personas` : null,
+                      r.party_size ? personas(r.party_size) : null,
                       r.catalog_item?.name,
                     ]
                 )

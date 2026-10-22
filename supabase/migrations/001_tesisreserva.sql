@@ -1229,12 +1229,15 @@ begin
          (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes))
     group by s.t
   )
+  -- Los horarios que ya pasaron no se devuelven. Antes venían tachados, y a
+  -- media tarde la pantalla arrancaba con veinte horarios tachados antes del
+  -- primero que se podía elegir. Tachado queda sólo lo que está ocupado.
   select
     tk.t                                as slot_time,
     greatest(v_capacity - tk.used, 0)   as remaining,
-    (v_capacity - tk.used) > 0
-      and (p_date + tk.t) > tesisreserva.ahora_local() as available
+    (v_capacity - tk.used) > 0          as available
   from taken tk
+  where (p_date + tk.t) > tesisreserva.ahora_local()
   order by tk.t;
 end;
 $$;

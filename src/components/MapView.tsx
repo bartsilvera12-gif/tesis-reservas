@@ -126,7 +126,8 @@ export function MapView({
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (!onMapClickRef.current) return;
-      const punto = { lat: e.latlng.lat, lng: e.latlng.lng };
+      // 6 decimales son ~10 cm: más no aporta y no entraba en el campo.
+      const punto = { lat: redondear(e.latlng.lat), lng: redondear(e.latlng.lng) };
       // En el selector, un local fuera de Ñemby no se puede guardar (la base
       // lo rechaza). Se avisa en el momento en vez de dejar mover el pin.
       if (!dentroDeNemby(punto)) {
@@ -312,7 +313,7 @@ export function MapView({
             animate: false,
           });
         } else if (points.length === 1) {
-          map.setView(points[0], 15);
+          map.setView(points[0], 15, { animate: false });
         }
       }
       didFit.current = true;
@@ -330,6 +331,10 @@ export function MapView({
         minHeight: 150,
         borderRadius: 16,
         position: 'relative',
+        // Leaflet usa z-index hasta 1000 en sus capas. Sin un contexto propio
+        // el mapa se dibujaba encima de la barra fija de "Reservar".
+        zIndex: 0,
+        isolation: 'isolate',
         overflow: 'hidden',
         border: `1px solid ${C.line}`,
         background: C.bgDeep,
@@ -386,3 +391,5 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+const redondear = (n: number) => Math.round(n * 1e6) / 1e6;

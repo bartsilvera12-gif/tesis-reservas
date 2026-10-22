@@ -402,8 +402,14 @@ export function Profile() {
             <svg width="16" height="16" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
               <path d={ICONS.person} fill={C.terracottaDark} />
             </svg>
-            Tu cuenta es de tipo <strong style={{ margin: '0 3px' }}>cliente</strong> y no
-            puede cambiarse.
+            {/* Un solo bloque de texto: como hijos sueltos de un flex, el
+                <strong> partía la frase en tres columnas. Y "no puede
+                cambiarse" ya no era cierto desde que existe el modo negocio. */}
+            <span>
+              {profile?.is_owner
+                ? 'Con esta cuenta reservás como cliente y además administrás tu negocio.'
+                : 'Con esta cuenta reservás como cliente. Si tenés un negocio, lo activás desde “Tengo un negocio”.'}
+            </span>
           </div>
 
           <Button loading={saving} onClick={() => void onSave()}>

@@ -13,7 +13,7 @@ import { esPorNoches, exigeServicio, usaCantidadDePersonas } from '@/lib/rubros'
 import { LADO_PORTADA, prepararImagen, ErrorImagen } from '@/lib/image';
 import { Button, Field, Loading, StateView, Stepper, TopBar } from '@/components/ui';
 import { C } from '@/lib/theme';
-import { dayShort, money, shortTime, toISODate } from '@/lib/format';
+import { dayShort, money, personas, shortTime, toISODate, todayISO } from '@/lib/format';
 
 /** Próximos 14 días para elegir fecha. */
 function nextDays(count = 14): Date[] {
@@ -42,7 +42,9 @@ export function Reserve() {
   const [busy, setBusy] = useState(false);
 
   // Hospedaje: se reserva por noches, así que hace falta el día de salida.
-  const [checkOut, setCheckOut] = useState('');
+  // Arranca en una noche, lo más común: con la salida vacía no se veía qué
+  // alojamientos había libres hasta completar otra fecha a mano.
+  const [checkOut, setCheckOut] = useState(() => diaSiguiente(toISODate(days[0])));
 
   // Comprobante de la seña. Se elige acá y se sube al confirmar.
   const [comprobante, setComprobante] = useState<File | null>(null);
@@ -213,6 +215,15 @@ export function Reserve() {
         date === toISODate(days[0]) ? 'Hoy' : formatChipDate(date)
       }${time ? ` · ${shortTime(time)} h` : ''}`;
 
+  // El servicio elegido va en el resumen: es lo que uno quiere confirmar
+  // antes de tocar "Confirmar". Antes decía "Turno individual" y nada más.
+  const servicio = services.find((s) => s.id === itemId) ?? null;
+  const servicioTexto = servicio
+    ? `${servicio.name}${servicio.price > 0 ? ` · ${money(servicio.price)}` : ''}${
+        servicio.duration_minutes ? ` · ${servicio.duration_minutes} min` : ''
+      }`
+    : null;
+
   const summarySub = porNoches
     ? checkOut && checkOut > date
       ? `${noches(date, checkOut)} noche${noches(date, checkOut) === 1 ? '' : 's'}${
@@ -220,12 +231,14 @@ export function Reserve() {
         }`
       : 'Elegí las fechas'
     : isTableMode
-      ? `${partySize ? `Mesa para ${partySize} personas` : 'Elegí una mesa'}${
+      ? `${partySize ? `Mesa para ${personas(partySize)}` : 'Elegí una mesa'}${
           time ? '' : ' y un horario'
         }`
-      : time
-        ? 'Turno individual'
-        : 'Elegí un horario';
+      : servicioTexto
+        ? `${servicioTexto}${time ? '' : ' · falta el horario'}`
+        : time
+          ? 'Turno individual'
+          : 'Elegí un horario';
 
   return (
     <div style={{ background: C.surface, minHeight: '100%' }}>
@@ -252,8 +265,11 @@ export function Reserve() {
                   onChange={(e) => {
                     setDate(e.target.value);
                     setPartySize(null);
-                    // Una salida anterior a la nueva entrada no tiene sentido.
-                    if (checkOut && checkOut <= e.target.value) setCheckOut('');
+                    // Una salida anterior a la nueva entrada no tiene sentido:
+                    // pasa a ser una noche después de la entrada.
+                    if (!checkOut || checkOut <= e.target.value) {
+                      setCheckOut(diaSiguiente(e.target.value));
+                    }
                   }}
                 />
               </div>
@@ -262,7 +278,7 @@ export function Reserve() {
                   label="Salida"
                   type="date"
                   value={checkOut}
-                  min={date}
+                  min={diaSiguiente(date)}
                   onChange={(e) => {
                     setCheckOut(e.target.value);
                     setItemId(null);
@@ -379,7 +395,7 @@ export function Reserve() {
                           color: libre ? C.sub : C.danger,
                         }}
                       >
-                        {a.capacity ? <span>Hasta {a.capacity} personas</span> : null}
+                        {a.capacity ? <span>Hasta {personas(a.capacity)}</span> : null}
                         {a.capacity ? <span aria-hidden>·</span> : null}
                         <span>
                           {libre
@@ -619,7 +635,9 @@ export function Reserve() {
               lineHeight: 1.45,
             }}
           >
-            Ese día el local no atiende. Probá con otra fecha.
+            {date === todayISO()
+              ? 'Por hoy ya no quedan horarios. Probá con otro día.'
+              : 'Ese día el local no atiende. Probá con otra fecha.'}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
@@ -772,7 +790,13 @@ export function Reserve() {
             label="Comentario (opcional)"
             multiline
             rows={2}
-            placeholder="Ej: mesa cerca de la ventana"
+            placeholder={
+              isTableMode
+                ? 'Ej: mesa cerca de la ventana'
+                : porNoches
+                  ? 'Ej: llegamos tarde, a las 22'
+                  : 'Ej: es la primera vez que vengo'
+            }
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
@@ -858,4 +882,11 @@ function noches(desde: string, hasta: string): number {
   const a = new Date(`${desde}T00:00:00`);
   const b = new Date(`${hasta}T00:00:00`);
   return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86_400_000));
+}
+
+/** El día siguiente a una fecha ISO, en la hora local. */
+function diaSiguiente(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  return toISODate(d);
 }

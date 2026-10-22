@@ -1,9 +1,12 @@
 import { supabase, friendlyError } from '@/lib/supabase';
 import type { Promotion } from '@/types/db';
 
+// `!inner` + el filtro por `business.active`: el banner es para clientes y
+// sólo muestra negocios abiertos. Un dueño ve igual las promos de sus locales
+// (la política se lo permite) y se le colaba la de su negocio pausado.
 const PROMO_SELECT = `
   *,
-  business:businesses ( id, name, slug, cover_url )
+  business:businesses!inner ( id, name, slug, cover_url, active )
 `;
 
 /** Promociones vigentes de todos los negocios — alimenta el banner del Home. */
@@ -14,6 +17,7 @@ export async function fetchActivePromotions(limit = 8): Promise<Promotion[]> {
     .from('promotions')
     .select(PROMO_SELECT)
     .eq('active', true)
+    .eq('business.active', true)
     .lte('starts_at', nowIso)
     .or(`unlimited.eq.true,ends_at.is.null,ends_at.gt.${nowIso}`)
     .order('created_at', { ascending: false })

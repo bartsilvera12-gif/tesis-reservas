@@ -12,6 +12,7 @@ import {
   distanceLabel,
   initials,
   money,
+  personas,
   shortTime,
   timeAgo,
 } from '@/lib/format';
@@ -95,7 +96,10 @@ export function BusinessDetail() {
   });
 
   return (
-    <div style={{ background: C.surface, minHeight: '100%' }}>
+    // Columna a toda la altura: con poco contenido (un lavadero con tres
+    // servicios) la barra de "Reservar" quedaba flotando en el medio de la
+    // pantalla en vez de abajo.
+    <div style={{ background: C.surface, minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Portada */}
       <div style={{ height: 170, position: 'relative', ...coverStyle(business) }}>
         <button
@@ -363,6 +367,8 @@ export function BusinessDetail() {
         <div style={{ height: 20 }} />
       </div>
 
+      <div style={{ flex: 1 }} />
+
       {/* Barra fija de acción */}
       <div
         style={{
@@ -371,6 +377,7 @@ export function BusinessDetail() {
           padding: '12px 20px',
           background: C.surface,
           borderTop: `1px solid ${C.line}`,
+          zIndex: 5,
         }}
       >
         {business.active ? (
@@ -440,7 +447,7 @@ function CatalogTab({
               {[
                 // En un alojamiento importa cuánta gente entra; en un plato o
                 // un servicio, cuánto dura.
-                item.capacity ? `Hasta ${item.capacity} personas` : null,
+                item.capacity ? `Hasta ${personas(item.capacity)}` : null,
                 item.duration_minutes ? `${item.duration_minutes} min` : null,
                 // La categoría ordena una carta ("Pastas", "Postres"); en los
                 // servicios siempre era "Servicios" y no decía nada.
@@ -498,10 +505,10 @@ function InfoTab({
     ? `https://wa.me/${soloNumeros.startsWith('595') ? soloNumeros : '595' + soloNumeros.replace(/^0/, '')}`
     : null;
 
-  const rows: { icon: string; text: string }[] = [];
+  const rows: { icon: string; text: string; href?: string }[] = [];
 
   if (address) rows.push({ icon: ICONS.location, text: address });
-  if (phone) rows.push({ icon: 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24 11.4 11.4 0 0 0 3.6.58 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.4 11.4 0 0 0 .58 3.6 1 1 0 0 1-.25 1z', text: phone });
+  if (phone) rows.push({ icon: 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24 11.4 11.4 0 0 0 3.6.58 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.4 11.4 0 0 0 .58 3.6 1 1 0 0 1-.25 1z', text: phone, href: `tel:${phone.replace(/[^\d+]/g, '')}` });
   rows.push({ icon: ICONS.tag, text: depositText });
 
   return (
@@ -580,7 +587,24 @@ function InfoTab({
           <svg width="16" height="16" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
             <path d={row.icon} fill={C.terracottaDark} />
           </svg>
-          {row.text}
+          {/* El teléfono se toca para llamar: en un celular copiarlo a mano
+              es lo que menos se quiere hacer. */}
+          {row.href ? (
+            <a
+              href={row.href}
+              style={{
+                color: C.terracottaDark,
+                fontWeight: 700,
+                textDecoration: 'none',
+                padding: '10px 0',
+                margin: '-10px 0',
+              }}
+            >
+              {row.text}
+            </a>
+          ) : (
+            row.text
+          )}
         </div>
       ))}
 

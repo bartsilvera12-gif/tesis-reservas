@@ -179,3 +179,6 @@ export function slugify(text: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
 }
+
+/** "1 persona" / "4 personas". */
+export const personas = (n: number): string => `${n} ${n === 1 ? 'persona' : 'personas'}`;

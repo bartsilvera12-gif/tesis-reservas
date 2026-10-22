@@ -88,7 +88,11 @@ export function Home() {
             {profile?.full_name?.split(' ')[0] || 'Hola'}
           </div>
         </div>
-        <div
+        {/* Parece un botón, así que lo es: lleva al mapa. Antes se tocaba y
+            no pasaba nada. */}
+        <button
+          onClick={() => navigate('/app/explorar')}
+          aria-label={`Ver el mapa de ${CIUDAD}`}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -96,6 +100,7 @@ export function Home() {
             background: C.cream,
             borderRadius: 999,
             padding: '7px 12px',
+            minHeight: 36,
             flexShrink: 0,
           }}
         >
@@ -106,7 +111,7 @@ export function Home() {
             {/* La app reúne los negocios de Ñemby: es la ciudad que se muestra. */}
             {CIUDAD}
           </span>
-        </div>
+        </button>
       </div>
 
       <PromoBanner promos={promos} onOpen={openBusiness} />

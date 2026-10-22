@@ -8,7 +8,7 @@ import { catalogoDe } from '@/lib/rubros';
 import { fetchBusinessReservations, fetchPendingByBusiness } from '@/services/reservations';
 import { Loading, Sheet, StateView, StatusChip } from '@/components/ui';
 import { C } from '@/lib/theme';
-import { dayShort, shortTime, todayISO } from '@/lib/format';
+import { dayShort, personas, shortTime, todayISO } from '@/lib/format';
 import { ICONS } from '@/components/BottomNav';
 import type { BusinessWithMeta } from '@/types/db';
 
@@ -503,7 +503,7 @@ export function OwnerDashboard() {
                 </div>
                 <div style={{ fontSize: 11.5, color: C.sub }}>
                   {[
-                    r.party_size ? `${r.party_size} personas` : null,
+                    r.party_size ? personas(r.party_size) : null,
                     r.catalog_item?.name,
                   ]
                     .filter(Boolean)

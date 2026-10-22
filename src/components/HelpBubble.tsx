@@ -61,6 +61,35 @@ export function HelpBubble() {
    */
   const ocultarBoton = /^\/app\/(negocio|reserva)\//.test(location.pathname);
 
+  /**
+   * Mientras se desliza la pantalla el botón se aparta, y vuelve al rato de
+   * soltar. Flotando fijo quedaba encima de lo que pasaba por la esquina: el
+   * interruptor del sábado en Horarios, la calificación de una tarjeta.
+   */
+  const [deslizando, setDeslizando] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Sólo cuenta el desplazamiento vertical: el carrusel de promos se mueve
+    // de costado solo cada pocos segundos y dejaba el botón escondido.
+    const altura = new WeakMap<EventTarget, number>();
+    const alDeslizar = (e: Event) => {
+      const t = e.target;
+      if (!t) return;
+      const y = t instanceof Element ? t.scrollTop : window.scrollY;
+      if ((altura.get(t) ?? 0) === y) return;
+      altura.set(t, y);
+      setDeslizando(true);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setDeslizando(false), 700);
+    };
+    // En captura: el que se desplaza es el contenedor de la pantalla, no la ventana.
+    document.addEventListener('scroll', alDeslizar, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener('scroll', alDeslizar, { capture: true });
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   // Cada mensaje nuevo lleva la vista al final.
   useEffect(() => {
     finRef.current?.scrollIntoView({ block: 'end' });
@@ -152,6 +181,10 @@ export function HelpBubble() {
           display: abierto || ocultarBoton ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          opacity: deslizando ? 0 : 1,
+          transform: deslizando ? 'scale(.85)' : 'none',
+          pointerEvents: deslizando ? 'none' : 'auto',
+          transition: 'opacity .18s ease, transform .18s ease',
         }}
       >
         <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">

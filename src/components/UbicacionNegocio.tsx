@@ -162,7 +162,10 @@ function UsarMiUbicacion({ onChange }: { onChange: (next: Coords) => void }) {
           setFuera(false);
           navigator.geolocation?.getCurrentPosition(
             (pos) => {
-              const aca = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+              const aca = {
+                lat: Math.round(pos.coords.latitude * 1e6) / 1e6,
+                lng: Math.round(pos.coords.longitude * 1e6) / 1e6,
+              };
               setBusy(false);
               // Cargando el negocio desde la casa, en otra ciudad, el pin se
               // iría afuera del mapa. Mejor decirlo que moverlo a ciegas.

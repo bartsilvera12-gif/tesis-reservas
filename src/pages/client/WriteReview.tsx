@@ -111,7 +111,7 @@ export function WriteReview() {
             {[1, 2, 3, 4, 5].map((n) => (
               <button
                 key={n}
-                aria-label={`${n} estrellas`}
+                aria-label={n === 1 ? '1 estrella' : `${n} estrellas`}
                 onClick={() => setRating(n)}
                 style={{
                   fontSize: 38,
@@ -176,7 +176,7 @@ export function WriteReview() {
           label="Tu comentario (opcional)"
           multiline
           rows={4}
-          placeholder="Contá cómo fue la atención, la comida, el ambiente…"
+          placeholder="Contá cómo te atendieron y qué te pareció el lugar…"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
         />
