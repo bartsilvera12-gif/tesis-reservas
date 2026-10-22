@@ -73,40 +73,42 @@ console.log('\n--- Negocio: recomendaciones del panel ---');
 ok('un negocio nuevo sin nada pendiente no recibe consejos inventados',
   titulos({}).length === 0);
 ok('un negocio nuevo con reseñas sin responder ya recibe un consejo (antes: "no hay datos")',
-  titulos({ reviews_count: 2, unanswered_reviews: 2 }).includes('Reseñas sin responder'));
+  titulos({ reviews_count: 2, unanswered_reviews: 2 }).includes('Agradecé las reseñas'));
 ok('las reseñas negativas sin respuesta tienen prioridad',
   titulos({ reviews_count: 3, unanswered_reviews: 3, low_unanswered_reviews: 1 })
-    .includes('Reseñas negativas sin respuesta'));
+    .includes('Respondé las críticas'));
 const urg = buildInsights({ ...base, expiring_soon: 2, unanswered_reviews: 1 }, sinSena);
-ok('lo urgente va primero: reservas por vencer', urg[0]?.title === 'Por vencer');
+ok('lo urgente va primero: reservas por vencer', urg[0]?.title === 'Respondé hoy');
 ok('y lleva a responderlas', urg[0]?.accion?.to === '/panel/reservas?ver=pendientes');
 const venc = buildInsights({ ...base, expired_recent: 2 }, sinSena)[0];
 ok('si se le vencen reservas y no pide seña, sugiere aceptar automáticamente',
   /automáticamente/.test(venc?.text ?? '') && venc?.accion?.to === '/panel/negocio');
 const vencSena = buildInsights({ ...base, expired_recent: 1 }, conSena)[0];
-ok('con seña no sugiere lo automático (no aplica)',
-  vencSena && !/automáticamente/.test(vencSena.text) && !vencSena.accion);
+ok('con seña no sugiere lo automático (no aplica) y lleva a las pendientes',
+  vencSena && !/automáticamente/.test(vencSena.text) && vencSena.accion?.to === '/panel/reservas?ver=pendientes');
+ok('explica por qué importa, no sólo el número',
+  /otro negocio/.test(vencSena?.text ?? ''), vencSena?.text);
 const dev = buildInsights({ ...base, to_refund: 2, expired_recent: 1, unanswered_reviews: 1 }, conSena);
 ok('las señas por devolver van primero y llevan al filtro',
-  dev[0]?.title === 'Señas para devolver' && dev[0]?.accion?.to === '/panel/reservas?ver=devolver');
+  dev[0]?.title === 'Devolvé las señas' && dev[0]?.accion?.to === '/panel/reservas?ver=devolver');
 ok('y dicen cuántos clientes esperan, en plural correcto',
-  /^2 clientes esperan que les devuelvas la seña/.test(dev[0]?.text ?? ''), dev[0]?.text);
+  /^2 clientes esperan la devolución/.test(dev[0]?.text ?? ''), dev[0]?.text);
 ok('con pocas reservas no inventa un horario pico',
   !titulos({ valid_reservations: 3, peak_hour: '20:00' }).includes('Horario más pedido'));
 const barras = [0, 1, 1, 2, 3, 6, 7].map((count, dow) => ({ dow, count }));
 const dem = buildInsights({ ...base, valid_reservations: 20, peak_hour: '20:30', week_bars: barras,
   top_item: { name: 'Corte de pelo', count: 9 } }, sinSena);
 ok('con volumen, muestra el horario más pedido y lo más pedido',
-  dem.some((i) => i.title === 'Horario más pedido' && /20:30/.test(i.text) && /Corte de pelo/.test(i.text)));
+  dem.some((i) => i.title === 'Tu horario más fuerte' && /20:30/.test(i.text) && /Corte de pelo/.test(i.text)));
 ok('y los días flojos, con una promo como acción',
-  dem.some((i) => i.title === 'Días flojos' && i.accion?.to === '/panel/promos'));
-ok('si ya tiene promo activa, no le insiste con crear otra',
-  !buildInsights({ ...base, valid_reservations: 20, week_bars: barras, active_promotions: 1 }, sinSena)
-    .some((i) => i.accion?.to === '/panel/promos'));
-const aus = buildInsights({ ...base, attended: 8, no_shows: 3 }, sinSena).find((i) => i.title === 'Clientes que no vienen');
+  dem.some((i) => i.title === 'Llená los días flojos' && i.accion?.to === '/panel/promos'));
+ok('si ya tiene promo activa, sugiere una pensada para el día flojo',
+  /pensada para los lunes/.test(buildInsights({ ...base, valid_reservations: 20, week_bars: barras, active_promotions: 1 }, sinSena)
+    .find((i) => i.title === 'Llená los días flojos')?.text ?? ''));
+const aus = buildInsights({ ...base, attended: 8, no_shows: 3 }, sinSena).find((i) => i.title === 'Turnos perdidos por ausencias');
 ok('muchas ausencias sin seña: sugiere pedir seña', /seña/.test(aus?.text ?? ''));
 ok('pocas ausencias no disparan nada',
-  !titulos({ attended: 20, no_shows: 1 }).includes('Clientes que no vienen'));
+  !titulos({ attended: 20, no_shows: 1 }).includes('Turnos perdidos por ausencias'));
 ok('nunca muestra más de 4 a la vez',
   buildInsights({ ...base, expiring_soon: 1, expired_recent: 1, low_unanswered_reviews: 1,
     unanswered_reviews: 2, attended: 5, no_shows: 3, valid_reservations: 30, peak_hour: '10:00',

@@ -48,59 +48,73 @@ export function buildInsights(
   const insights: Insight[] = [];
   const cobraSena = negocio.deposit_enabled && negocio.deposit_amount > 0;
 
+  // Cada consejo dice qué pasó, por qué importa y qué hacer. Un dato suelto
+  // ("1 reserva venció") no ayuda: el dueño tiene que saber qué cambiar.
+
   // ── Urgente: se pierde si no se responde ──────────────────────────────────
   if (stats.expiring_soon > 0) {
+    const n = stats.expiring_soon;
     insights.push({
-      title: 'Por vencer',
-      text: `${stats.expiring_soon} ${plural(stats.expiring_soon, 'reserva vence', 'reservas vencen')} en las próximas horas. Si no respondés, se libera el lugar y el cliente se va.`,
+      title: 'Respondé hoy',
+      text: `${n} ${plural(n, 'reserva vence', 'reservas vencen')} en menos de 6 horas. Si se vence, el cliente se queda sin lugar y es difícil que vuelva a intentar: aceptala o, si no podés, rechazala proponiendo otro horario.`,
       accion: { label: 'Responder ahora', to: '/panel/reservas?ver=pendientes' },
     });
   } else if (stats.pending_count >= 3) {
     insights.push({
-      title: 'Reservas sin responder',
-      text: `Tenés ${stats.pending_count} reservas esperando. Responder rápido evita que el cliente busque otro lugar.`,
+      title: 'Clientes esperando respuesta',
+      text: `Tenés ${stats.pending_count} reservas sin responder. Quien no recibe confirmación en el día suele reservar en otro lado: revisá "Por responder" al abrir y al cerrar el local.`,
       accion: { label: 'Ver pendientes', to: '/panel/reservas?ver=pendientes' },
     });
   }
 
   // La plata del cliente va antes que cualquier consejo de ventas.
   if (stats.to_refund > 0) {
+    const n = stats.to_refund;
     insights.push({
-      title: 'Señas para devolver',
-      text: `${stats.to_refund} ${plural(stats.to_refund, 'cliente espera que le devuelvas la seña', 'clientes esperan que les devuelvas la seña')} de una reserva que no se concretó.`,
+      title: 'Devolvé las señas',
+      text: `${n} ${plural(n, 'cliente espera', 'clientes esperan')} la devolución de una seña. Devolverla rápido genera confianza y hace que vuelvan a reservar; demorarla es la forma más rápida de ganarse una mala reseña.`,
       accion: { label: 'Ver señas', to: '/panel/reservas?ver=devolver' },
     });
   }
 
-  if (stats.expired_recent > 0) {
+  // Con la aceptación automática y sin seña ya no se vence ninguna: lo que
+  // pasó antes de activarla no pide ninguna acción.
+  if (stats.expired_recent > 0 && (cobraSena || !negocio.auto_confirm)) {
+    const n = stats.expired_recent;
+    const puedeAutomatico = !cobraSena && !negocio.auto_confirm;
     insights.push({
-      title: 'Se te vencieron reservas',
-      text: cobraSena || negocio.auto_confirm
-          ? `${stats.expired_recent} ${plural(stats.expired_recent, 'reserva venció', 'reservas vencieron')} sin respuesta este mes.`
-          : `${stats.expired_recent} ${plural(stats.expired_recent, 'reserva venció', 'reservas vencieron')} sin respuesta este mes. Si no pedís seña, podés aceptarlas automáticamente.`,
-      // Con seña no hay atajo: responder a tiempo es la única solución.
-      accion:
-        cobraSena || negocio.auto_confirm ? undefined : { label: 'Configurar', to: '/panel/negocio' },
+      title: 'Estás perdiendo clientes',
+      text:
+        `Este mes ${plural(n, 'se venció 1 reserva', `se vencieron ${n} reservas`)} sin respuesta. ` +
+        `${plural(n, 'Es un cliente que quiso venir y probablemente terminó', 'Son clientes que quisieron venir y probablemente terminaron')} en otro negocio. ` +
+        (puedeAutomatico
+          ? 'Como no pedís seña, podés aceptar las reservas automáticamente y no perder ninguna.'
+          : 'Revisá "Por responder" al abrir y al cerrar el local: tenés 24 horas para contestar cada una.'),
+      accion: puedeAutomatico
+        ? { label: 'Aceptar automáticamente', to: '/panel/negocio' }
+        : { label: 'Ver pendientes', to: '/panel/reservas?ver=pendientes' },
     });
   }
 
   // ── Reputación ────────────────────────────────────────────────────────────
   if (stats.low_unanswered_reviews > 0) {
+    const n = stats.low_unanswered_reviews;
     insights.push({
-      title: 'Reseñas negativas sin respuesta',
-      text: `${stats.low_unanswered_reviews} ${plural(stats.low_unanswered_reviews, 'cliente te calificó', 'clientes te calificaron')} con 3 estrellas o menos y no ${plural(stats.low_unanswered_reviews, 'tiene', 'tienen')} respuesta. Contestar con calma muestra que te importa.`,
+      title: 'Respondé las críticas',
+      text: `${n} ${plural(n, 'cliente te dejó', 'clientes te dejaron')} 3 estrellas o menos sin respuesta. Agradecé, no discutas y contá qué vas a mejorar: los próximos clientes leen esas respuestas antes de elegirte.`,
       accion: { label: 'Responder', to: '/panel/resenas' },
     });
   } else if (stats.unanswered_reviews > 0) {
+    const n = stats.unanswered_reviews;
     insights.push({
-      title: 'Reseñas sin responder',
-      text: `${stats.unanswered_reviews} ${plural(stats.unanswered_reviews, 'reseña espera', 'reseñas esperan')} tu respuesta. Agradecer una buena reseña también suma.`,
+      title: 'Agradecé las reseñas',
+      text: `${n} ${plural(n, 'reseña espera', 'reseñas esperan')} tu respuesta. Un simple "¡Gracias, te esperamos!" muestra que el negocio está atento, y quien compara lugares lo tiene en cuenta.`,
       accion: { label: 'Responder', to: '/panel/resenas' },
     });
   } else if (stats.reviews_count >= 3 && stats.rating_avg != null && stats.rating_avg >= 4) {
     insights.push({
-      title: 'Buenas reseñas',
-      text: `Mantenés ${stats.rating_avg.toFixed(1).replace('.', ',')} estrellas con ${stats.reviews_count} reseñas, todas respondidas. Seguí así.`,
+      title: 'Aprovechá tus buenas reseñas',
+      text: `Tenés ${stats.rating_avg.toFixed(1).replace('.', ',')} estrellas con ${stats.reviews_count} reseñas. Es tu mejor carta de presentación: pedile a cada cliente que deje su opinión al irse, así seguís sumando.`,
     });
   }
 
@@ -109,11 +123,11 @@ export function buildInsights(
   if (cerradas >= 5 && stats.no_shows / cerradas >= 0.2) {
     const pct = Math.round((stats.no_shows / cerradas) * 100);
     insights.push({
-      title: 'Clientes que no vienen',
+      title: 'Turnos perdidos por ausencias',
       text: cobraSena
-        ? `El ${pct}% de los clientes no se presentó en los últimos 3 meses. Un recordatorio por WhatsApp el día antes ayuda.`
-        : `El ${pct}% de los clientes no se presentó en los últimos 3 meses. Pedir una seña al reservar suele bajar las ausencias.`,
-      accion: cobraSena ? undefined : { label: 'Configurar seña', to: '/panel/negocio' },
+        ? `El ${pct}% de los clientes no vino en los últimos 3 meses: son turnos que podrías haber dado a otros. Mandales un mensaje el día anterior para confirmar.`
+        : `El ${pct}% de los clientes no vino en los últimos 3 meses: son turnos que podrías haber dado a otros. Pedir una seña chica al reservar es lo que más reduce las ausencias: quien pagó algo, viene.`,
+      accion: cobraSena ? undefined : { label: 'Pedir seña', to: '/panel/negocio' },
     });
   }
 
@@ -134,12 +148,13 @@ export function buildInsights(
       quietest.count < busiest.count / 2
     ) {
       insights.push({
-        title: 'Días flojos',
-        text: `${losDias(quietest.dow).replace(/^l/, 'L')} recibís bastante menos reservas que ${losDias(
-          busiest.dow,
-        )}.${stats.active_promotions === 0 ? ' Una promoción para ese día puede equilibrar la semana.' : ''}`,
-        accion:
-          stats.active_promotions === 0 ? { label: 'Crear promoción', to: '/panel/promos' } : undefined,
+        title: 'Llená los días flojos',
+        text:
+          `${losDias(quietest.dow).replace(/^l/, 'L')} recibís menos de la mitad de reservas que ${losDias(busiest.dow)}. ` +
+          (stats.active_promotions === 0
+            ? `Una promo sólo para ese día (por ejemplo, 15% de descuento) lleva clientes del día lleno al vacío y aprovechás mejor la semana.`
+            : `Si tu promo actual no es para ese día, probá una pensada para ${losDias(quietest.dow)}.`),
+        accion: { label: 'Crear promoción', to: '/panel/promos' },
       });
     }
 
@@ -148,24 +163,29 @@ export function buildInsights(
     if (negocio.reservation_type === 'stay') {
       if (stats.top_item) {
         insights.push({
-          title: 'Lo más pedido',
-          text: `${stats.top_item.name} es lo que más se reserva. Tené las fotos y el precio al día.`,
+          title: 'Tu alojamiento estrella',
+          text: `${stats.top_item.name} es lo más reservado. Mantené sus fotos al día y, cuando esté lleno, ofrecé otro alojamiento con una promo para no perder la reserva.`,
         });
       }
     } else if (stats.peak_hour) {
+      const refuerzo =
+        negocio.reservation_type === 'table'
+          ? 'sumá mesas a esa hora'
+          : 'reforzala con alguien más';
       insights.push({
-        title: 'Horario más pedido',
+        title: 'Tu horario más fuerte',
         text: `La mayoría reserva a las ${stats.peak_hour}${
-          stats.top_item ? `, y lo más pedido es ${stats.top_item.name}` : ''
-        }. Asegurate de tener lugar en esa franja.`,
+          stats.top_item ? ` y lo más pedido es ${stats.top_item.name}` : ''
+        }. Es lo primero que se llena: si podés, ${refuerzo} y vas a recibir más clientes sin rechazar a nadie.`,
       });
     }
   }
 
   if (stats.returning_clients >= 2) {
     insights.push({
-      title: 'Clientes que vuelven',
-      text: `${stats.returning_clients} clientes ya reservaron más de una vez. Una promo para clientes frecuentes los mantiene cerca.`,
+      title: 'Cuidá a los que vuelven',
+      text: `${stats.returning_clients} clientes ya reservaron más de una vez. Son los que más valen y los que te recomiendan: una promo pensada para ellos (por ejemplo, "la quinta visita con descuento") hace que te sigan eligiendo.`,
+      accion: { label: 'Crear promoción', to: '/panel/promos' },
     });
   }
 
