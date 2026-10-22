@@ -62,7 +62,7 @@ const base = {
   today_count: 0, pending_count: 0, confirmed_count: 0, active_promotions: 0,
   rating_avg: null, reviews_count: 0, rating_breakdown: {}, week_bars: [],
   peak_hour: null, total_reservations: 0, valid_reservations: 0,
-  unanswered_reviews: 0, low_unanswered_reviews: 0, expiring_soon: 0, expired_recent: 0,
+  unanswered_reviews: 0, low_unanswered_reviews: 0, expiring_soon: 0, expired_recent: 0, to_refund: 0,
   attended: 0, no_shows: 0, client_cancellations: 0, top_item: null, returning_clients: 0,
 };
 const sinSena = { deposit_enabled: false, deposit_amount: 0, auto_confirm: false, reservation_type: 'slot' };
@@ -84,8 +84,13 @@ const venc = buildInsights({ ...base, expired_recent: 2 }, sinSena)[0];
 ok('si se le vencen reservas y no pide seña, sugiere aceptar automáticamente',
   /automáticamente/.test(venc?.text ?? '') && venc?.accion?.to === '/panel/negocio');
 const vencSena = buildInsights({ ...base, expired_recent: 1 }, conSena)[0];
-ok('con seña, recuerda devolverlas en vez de sugerir lo automático',
-  /devolver/.test(vencSena?.text ?? '') && !/automáticamente/.test(vencSena?.text ?? ''));
+ok('con seña no sugiere lo automático (no aplica)',
+  vencSena && !/automáticamente/.test(vencSena.text) && !vencSena.accion);
+const dev = buildInsights({ ...base, to_refund: 2, expired_recent: 1, unanswered_reviews: 1 }, conSena);
+ok('las señas por devolver van primero y llevan al filtro',
+  dev[0]?.title === 'Señas para devolver' && dev[0]?.accion?.to === '/panel/reservas?ver=devolver');
+ok('y dicen cuántos clientes esperan, en plural correcto',
+  /^2 clientes esperan que les devuelvas la seña/.test(dev[0]?.text ?? ''), dev[0]?.text);
 ok('con pocas reservas no inventa un horario pico',
   !titulos({ valid_reservations: 3, peak_hour: '20:00' }).includes('Horario más pedido'));
 const barras = [0, 1, 1, 2, 3, 6, 7].map((count, dow) => ({ dow, count }));

@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/useToast';
 import { useConfirm } from '@/hooks/useConfirm';
 import {
   fetchBusinessReservations,
+  fetchDepositsToRefund,
   markDepositRefunded,
   setReservationStatus,
 } from '@/services/reservations';
@@ -44,6 +45,9 @@ const DIAS_ADELANTE = 7;
  * ningún día y no había forma de aceptarla.
  */
 const PENDIENTES = 'pendientes';
+
+/** Filtro de las señas que hay que devolver (rechazadas, canceladas o vencidas). */
+const DEVOLVER = 'devolver';
 
 function rangoDeDias(): Date[] {
   const base = new Date();
@@ -116,7 +120,10 @@ export function OwnerReservations() {
   const hoy = useMemo(() => toISODate(new Date()), []);
   // Desde el inicio del panel se llega con ?ver=pendientes.
   const [params] = useSearchParams();
-  const [date, setDate] = useState(params.get('ver') === PENDIENTES ? PENDIENTES : hoy);
+  const [date, setDate] = useState(() => {
+    const ver = params.get('ver');
+    return ver === PENDIENTES || ver === DEVOLVER ? ver : hoy;
+  });
   const [working, setWorking] = useState<string | null>(null);
 
   const pendientesQuery = useAsync(
@@ -130,12 +137,18 @@ export function OwnerReservations() {
   const pendientes = pendientesQuery.data ?? [];
   const porResponder = pendientes.filter((r) => r.status === 'pending');
 
+  const devolverQuery = useAsync(() => fetchDepositsToRefund(active!.id), [active?.id], {
+    enabled: Boolean(active),
+  });
+  const aDevolver = devolverQuery.data ?? [];
+  const sinDevolver = aDevolver.filter((r) => r.deposit_status === 'to_refund').length;
+
   /**
    * Si hay algo por responder, la pantalla abre ahí. Es lo único que el dueño
    * TIENE que hacer; lo demás es consulta. Sólo la primera vez: si después
    * elige otro día, no se lo cambiamos de abajo.
    */
-  const yaEligio = useRef(params.get('ver') === PENDIENTES);
+  const yaEligio = useRef(params.get('ver') === PENDIENTES || params.get('ver') === DEVOLVER);
   useEffect(() => {
     if (yaEligio.current || !pendientesQuery.data) return;
     yaEligio.current = true;
@@ -146,31 +159,34 @@ export function OwnerReservations() {
   // el lunes pasado. Se lleva "Hoy" al centro apenas se monta la pantalla.
   const tira = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    // +1: el primer chip es el de "Por responder".
-    const chip = tira.current?.children[DIAS_ATRAS + 1] as HTMLElement | undefined;
+    // Se busca por el texto: antes de "Hoy" van los filtros, y cuántos hay
+    // depende de si hay señas por devolver.
+    const chip = [...(tira.current?.children ?? [])].find((c) =>
+      c.textContent?.startsWith('Hoy'),
+    ) as HTMLElement | undefined;
     chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }, []);
 
   const verPendientes = date === PENDIENTES;
+  const verDevolver = date === DEVOLVER;
 
   // Abriendo en "Por responder", ese chip tiene que verse: centrar "Hoy" lo
   // dejaba fuera de la pantalla, a la izquierda, y no se entendía qué filtro
   // estaba puesto.
   useEffect(() => {
-    if (verPendientes) tira.current?.scrollTo({ left: 0 });
-  }, [verPendientes]);
+    if (verPendientes || verDevolver) tira.current?.scrollTo({ left: 0 });
+  }, [verPendientes, verDevolver]);
 
   const query = useAsync(
     () => fetchBusinessReservations(active!.id, date),
     [active?.id, date],
-    { enabled: Boolean(active) && !verPendientes },
+    { enabled: Boolean(active) && !verPendientes && !verDevolver },
   );
 
-  const list = verPendientes ? pendientes : (query.data ?? []);
-  const cargando = verPendientes
-    ? pendientesQuery.loading && !pendientesQuery.data
-    : query.loading && !query.data;
-  const errorDeCarga = verPendientes ? pendientesQuery.error : query.error;
+  const filtro = verPendientes ? pendientesQuery : verDevolver ? devolverQuery : query;
+  const list = verPendientes ? pendientes : verDevolver ? aDevolver : (query.data ?? []);
+  const cargando = filtro.loading && !filtro.data;
+  const errorDeCarga = filtro.error;
 
   /**
    * Rechazar le llega al cliente como una notificación. Sin motivo se entera
@@ -186,7 +202,12 @@ export function OwnerReservations() {
       danger: true,
       prompt: {
         label: 'Motivo (opcional)',
-        placeholder: 'Ej: no tenemos mesa para ese horario',
+        placeholder:
+          active?.reservation_type === 'table'
+            ? 'Ej: no tenemos mesa para ese horario'
+            : active?.reservation_type === 'stay'
+              ? 'Ej: no tenemos lugar en esas fechas'
+              : 'Ej: ese horario ya está ocupado',
         maxLength: 200,
       },
     });
@@ -202,6 +223,7 @@ export function OwnerReservations() {
     // En "Por responder" la tarjeta queda a la vista con su nuevo estado
     // hasta que se cambie de filtro: que desaparezca de golpe desorienta.
     pendientesQuery.setData(aplicar);
+    devolverQuery.setData(aplicar);
   }
 
   async function devolverSena(r: ReservationWithRelations) {
@@ -236,6 +258,7 @@ export function OwnerReservations() {
       toast.fail(err instanceof Error ? err.message : 'No pudimos actualizar la reserva.');
       query.reload();
       pendientesQuery.reload();
+      devolverQuery.reload();
     } finally {
       setWorking(null);
     }
@@ -253,6 +276,15 @@ export function OwnerReservations() {
           active={verPendientes}
           onClick={() => setDate(PENDIENTES)}
         />
+        {/* Sólo cuando hay algo para devolver: es un pendiente de plata del
+            dueño con el cliente, no una vista de todos los días. */}
+        {(sinDevolver > 0 || verDevolver) && (
+          <Chip
+            label={`Señas a devolver · ${sinDevolver}`}
+            active={verDevolver}
+            onClick={() => setDate(DEVOLVER)}
+          />
+        )}
         {days.map((d) => {
           const iso = toISODate(d);
           const n = porResponder.filter((r) => r.reservation_date === iso).length;
@@ -282,10 +314,15 @@ export function OwnerReservations() {
           title="No pudimos cargar las reservas."
           detail={errorDeCarga}
           actionLabel="Reintentar"
-          onAction={verPendientes ? pendientesQuery.reload : query.reload}
+          onAction={filtro.reload}
         />
       ) : list.length === 0 ? (
-        verPendientes ? (
+        verDevolver ? (
+          <StateView
+            title="No hay señas para devolver."
+            detail="Si una reserva con seña se rechaza, se cancela antes de confirmarla o vence, aparece acá."
+          />
+        ) : verPendientes ? (
           <StateView
             title="Nada por responder."
             detail="Cuando entre una reserva nueva la vas a ver primero acá."
@@ -345,7 +382,7 @@ export function OwnerReservations() {
               <div style={{ fontSize: 12.5, color: C.sub, marginTop: 4, lineHeight: 1.5 }}>
                 {[
                   // Mezclando días, cada tarjeta tiene que decir de cuándo es.
-                  verPendientes ? compactDate(r.reservation_date) : null,
+                  verPendientes || verDevolver ? compactDate(r.reservation_date) : null,
                   // El dueño de un hospedaje necesita ver hasta cuándo se
                   // queda el huésped, no a qué hora entra.
                   r.check_out_date

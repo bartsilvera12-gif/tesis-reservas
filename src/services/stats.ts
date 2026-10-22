@@ -63,17 +63,24 @@ export function buildInsights(
     });
   }
 
+  // La plata del cliente va antes que cualquier consejo de ventas.
+  if (stats.to_refund > 0) {
+    insights.push({
+      title: 'Señas para devolver',
+      text: `${stats.to_refund} ${plural(stats.to_refund, 'cliente espera que le devuelvas la seña', 'clientes esperan que les devuelvas la seña')} de una reserva que no se concretó.`,
+      accion: { label: 'Ver señas', to: '/panel/reservas?ver=devolver' },
+    });
+  }
+
   if (stats.expired_recent > 0) {
     insights.push({
       title: 'Se te vencieron reservas',
-      text: cobraSena
-        ? `${stats.expired_recent} ${plural(stats.expired_recent, 'reserva venció', 'reservas vencieron')} sin respuesta este mes. Fijate si quedó alguna seña para devolver.`
-        : negocio.auto_confirm
+      text: cobraSena || negocio.auto_confirm
           ? `${stats.expired_recent} ${plural(stats.expired_recent, 'reserva venció', 'reservas vencieron')} sin respuesta este mes.`
           : `${stats.expired_recent} ${plural(stats.expired_recent, 'reserva venció', 'reservas vencieron')} sin respuesta este mes. Si no pedís seña, podés aceptarlas automáticamente.`,
-      accion: cobraSena || negocio.auto_confirm
-        ? { label: 'Ver reservas', to: '/panel/reservas' }
-        : { label: 'Configurar', to: '/panel/negocio' },
+      // Con seña no hay atajo: responder a tiempo es la única solución.
+      accion:
+        cobraSena || negocio.auto_confirm ? undefined : { label: 'Configurar', to: '/panel/negocio' },
     });
   }
 

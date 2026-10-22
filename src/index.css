@@ -155,6 +155,9 @@ textarea::placeholder {
   overflow-x: auto;
   padding-bottom: 4px;
   scroll-snap-type: x proximity;
+  /* Sin esto el snap alinea el primer chip contra el borde de la pantalla y
+     se come el margen lateral: "Por responder" quedaba pegado a la izquierda. */
+  scroll-padding-inline: 20px;
 }
 
 /* Leaflet dentro del contenedor redondeado */

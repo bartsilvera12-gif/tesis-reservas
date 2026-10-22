@@ -305,6 +305,8 @@ export interface BusinessStats {
   low_unanswered_reviews: number;
   /** Pendientes cuyo plazo vence en las próximas 6 horas. */
   expiring_soon: number;
+  /** Señas de reservas que no se concretaron y todavía no se devolvieron. */
+  to_refund: number;
   /** Vencidas sin respuesta en los últimos 30 días. */
   expired_recent: number;
   attended: number;

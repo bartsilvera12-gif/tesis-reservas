@@ -138,6 +138,26 @@ export async function markDepositRefunded(reservationId: string): Promise<Reserv
   return (Array.isArray(data) ? data[0] : data) as Reservation;
 }
 
+/**
+ * Señas que el negocio tiene que devolver, de cualquier fecha: una reserva
+ * rechazada la semana pasada no aparece en "hoy" ni en "por responder", y el
+ * dueño no tenía cómo encontrarla.
+ */
+export async function fetchDepositsToRefund(
+  businessId: string,
+): Promise<ReservationWithRelations[]> {
+  const { data, error } = await supabase
+    .from('reservations')
+    .select(RESERVATION_SELECT)
+    .eq('business_id', businessId)
+    .eq('deposit_status', 'to_refund')
+    .order('reservation_date')
+    .order('reservation_time');
+
+  if (error) throw new Error(friendlyError(error, 'No pudimos cargar las señas.'));
+  return (data ?? []) as ReservationWithRelations[];
+}
+
 /** Reservas del cliente autenticado. */
 export async function fetchMyReservations(
   clientId: string,

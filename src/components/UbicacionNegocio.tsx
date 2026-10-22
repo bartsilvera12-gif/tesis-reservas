@@ -139,7 +139,7 @@ function SelectorDeUbicacion({
       ) : (
         <button
           onClick={() => setAMano(true)}
-          style={{ fontSize: 12, color: C.sub, marginTop: 6, padding: '6px 0', textDecoration: 'underline' }}
+          style={{ fontSize: 12, color: C.sub, marginTop: 2, padding: '6px 0', minHeight: 40, textDecoration: 'underline' }}
         >
           Escribir las coordenadas
         </button>

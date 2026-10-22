@@ -299,7 +299,7 @@ export function OwnerDashboard() {
               Reservas por día de la semana
             </div>
             <div style={{ fontSize: 11.5, color: C.sub, marginBottom: 12 }}>
-              Últimas 4 semanas
+              Últimas 4 semanas y lo que ya está reservado
             </div>
 
             {stats.total_reservations === 0 ? (

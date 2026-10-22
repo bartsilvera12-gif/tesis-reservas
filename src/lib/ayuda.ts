@@ -189,6 +189,7 @@ export const AYUDA_DUENIO: SeccionAyuda[] = [
     puntos: [
       'Al rechazar, escribí el **motivo**: *“¿te sirve a las 16?”*.',
       'Si cobraste seña, devolvela por transferencia y tocá **Ya le devolví la seña**: el cliente recibe el aviso.',
+      'Las señas pendientes de devolver quedan juntas en **Reservas → Señas a devolver**.',
     ],
     imagen: 'e05-rechazar',
   },

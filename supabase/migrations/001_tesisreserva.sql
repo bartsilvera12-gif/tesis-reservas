@@ -2035,6 +2035,10 @@ begin
       where business_id = p_business_id and status = 'pending'
         and expires_at > now() and expires_at <= now() + interval '6 hours'
     ),
+    'to_refund', (
+      select count(*) from tesisreserva.reservations
+      where business_id = p_business_id and deposit_status = 'to_refund'
+    ),
     'expired_recent', (
       select count(*) from tesisreserva.reservations
       where business_id = p_business_id and status = 'expired'

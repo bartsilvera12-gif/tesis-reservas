@@ -250,7 +250,8 @@ Se muestran como mucho 4 recomendaciones, ordenadas por urgencia. Cada una lleva
 |---|---|
 | Por vencer | Hay reservas pendientes cuyo plazo vence en las próximas 6 horas. |
 | Reservas sin responder | 3 o más pendientes. |
-| Se te vencieron reservas | Venció alguna en los últimos 30 días. Si el negocio no pide seña, sugiere la aceptación automática; si la pide, recuerda revisar las devoluciones. |
+| Señas para devolver | Hay reservas que no se concretaron con la seña todavía sin devolver. Lleva al filtro "Señas a devolver" de Reservas. |
+| Se te vencieron reservas | Venció alguna en los últimos 30 días. Si el negocio no pide seña, sugiere la aceptación automática. |
 | Reseñas negativas sin respuesta / Reseñas sin responder | Hay reseñas sin contestar. Las de 3 estrellas o menos van primero. |
 | Clientes que no vienen | 20% o más de "no asistió" con al menos 5 turnos cerrados en 3 meses. Si no pide seña, sugiere pedirla. |
 | Días flojos | Un día con movimiento recibe menos de la mitad que el más fuerte. Los días cerrados no cuentan. Si no hay promo activa, sugiere crear una. |
@@ -268,7 +269,7 @@ Los datos los calcula `business_stats` en la base. La regla vive en `src/service
 | `npm run db:test` | Flujos completos, RLS, capacidad, seña, historial, notificaciones, reseñas sólo después de la reserva | 67 |
 | `npm run db:test:owner` | Reglas del panel del administrador: estados, reseñas, promociones, carta, horarios, capacidad, estadísticas, aislamiento | 106 |
 | `npm run test:reglas` | Plazo de respuesta, vencimiento, aceptación automática, estados de la seña, escritura sólo por funciones | 41 |
-| `npm run test:recomendaciones` | Recomendaciones del cliente (reseñas, rubros, promos, cercanía) y del panel del negocio | 25 |
+| `npm run test:recomendaciones` | Recomendaciones del cliente (reseñas, rubros, promos, cercanía) y del panel del negocio | 27 |
 | `npm run test:modo` | Modo cliente y modo negocio en la misma cuenta | 14 |
 | `npm run test:cercania` | Orden por distancia en el mapa | 17 |
 | `npm run test:recordatorios` | A quién y cuándo se le recuerda una reserva | 22 |
