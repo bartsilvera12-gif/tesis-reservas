@@ -111,7 +111,7 @@ export const AYUDA_CLIENTE: SeccionAyuda[] = [
   {
     id: 'asistente',
     titulo: 'El asistente',
-    resumen: 'El botón redondo de abajo a la derecha.',
+    resumen: 'El botón Asistente de la barra de abajo.',
     puntos: [
       'Escribile como a una persona: *“¿Cuál es mi próxima reserva?”*.',
       'Explica cómo funciona la app y te dice en qué pantalla hacer cada cosa.',

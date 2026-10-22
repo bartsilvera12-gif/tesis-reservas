@@ -26,12 +26,21 @@ const SUGERENCIAS: Record<'client' | 'owner', string[]> = {
 };
 
 /**
- * Burbuja de ayuda con el asistente.
+ * El chat con el asistente, como una hoja que sube sobre la pantalla actual.
  *
- * Flota sobre la navegación inferior en todas las pantallas. Se oculta sola
- * si el servicio del asistente no está configurado, así la app sigue andando
- * igual sin él.
+ * Antes se abría con una burbuja flotante, que quedaba encima de lo que
+ * pasaba por la esquina (interruptores, calificaciones, el borde de los
+ * botones). Ahora se abre desde el botón "Asistente" de la barra de abajo,
+ * que no tapa nada. Si el servicio no está configurado no aparece ni el
+ * botón ni el chat, y la app sigue andando igual.
  */
+const EVENTO_ABRIR = 'ajspots:abrir-asistente';
+
+/** Abre el chat encima de la pantalla en la que se esté. */
+export function abrirAsistente() {
+  window.dispatchEvent(new Event(EVENTO_ABRIR));
+}
+
 export function HelpBubble() {
   const { profile } = useAuth();
   const location = useLocation();
@@ -51,43 +60,12 @@ export function HelpBubble() {
     ? 'owner'
     : 'client';
 
-  /**
-   * En la ficha de un negocio y en sus pasos (reservar, reseñar) el botón no
-   * aparece. Esas pantallas terminan en un botón principal que ocupa todo el
-   * ancho, y la burbuja quedaba encima de su borde derecho: justo sobre
-   * "Reservar" y "Confirmar reserva". Ahí la persona ya sabe qué quiere hacer.
-   * Tampoco en "¡Reserva creada!": su espacio de reserva cortaba el fondo
-   * blanco de la pantalla con una franja, y ahí no hay nada que consultar.
-   */
-  const ocultarBoton = /^\/app\/(negocio|reserva)\//.test(location.pathname);
-
-  /**
-   * Mientras se desliza la pantalla el botón se aparta, y vuelve al rato de
-   * soltar. Flotando fijo quedaba encima de lo que pasaba por la esquina: el
-   * interruptor del sábado en Horarios, la calificación de una tarjeta.
-   */
-  const [deslizando, setDeslizando] = useState(false);
+  // Lo abre el botón "Asistente" de la barra de abajo, desde cualquier
+  // pantalla, sin cambiar de página.
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // Sólo cuenta el desplazamiento vertical: el carrusel de promos se mueve
-    // de costado solo cada pocos segundos y dejaba el botón escondido.
-    const altura = new WeakMap<EventTarget, number>();
-    const alDeslizar = (e: Event) => {
-      const t = e.target;
-      if (!t) return;
-      const y = t instanceof Element ? t.scrollTop : window.scrollY;
-      if ((altura.get(t) ?? 0) === y) return;
-      altura.set(t, y);
-      setDeslizando(true);
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => setDeslizando(false), 700);
-    };
-    // En captura: el que se desplaza es el contenedor de la pantalla, no la ventana.
-    document.addEventListener('scroll', alDeslizar, { capture: true, passive: true });
-    return () => {
-      document.removeEventListener('scroll', alDeslizar, { capture: true });
-      if (timer) clearTimeout(timer);
-    };
+    const abrir = () => setAbierto(true);
+    window.addEventListener(EVENTO_ABRIR, abrir);
+    return () => window.removeEventListener(EVENTO_ABRIR, abrir);
   }, []);
 
   // Cada mensaje nuevo lleva la vista al final.
@@ -158,44 +136,6 @@ export function HelpBubble() {
 
   return (
     <>
-      {/* Lugar para el botón al final del contenido. El botón flota fijo, así
-          que lo último de cada pantalla ("Gestionar", la última tarjeta)
-          quedaba debajo de él sin forma de correrlo. Con este espacio, al
-          bajar hasta el fondo todo termina por encima. */}
-      {!ocultarBoton && <div aria-hidden style={{ height: 72, flexShrink: 0 }} />}
-
-      {/* Botón flotante */}
-      <button
-        onClick={() => setAbierto(true)}
-        aria-label="Abrir el asistente"
-        style={{
-          position: 'fixed',
-          right: 16,
-          bottom: `calc(78px + var(--safe-bottom))`,
-          zIndex: 800,
-          width: 54,
-          height: 54,
-          borderRadius: '50%',
-          background: C.terracotta,
-          boxShadow: '0 8px 22px rgba(169,103,76,.45)',
-          display: abierto || ocultarBoton ? 'none' : 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: deslizando ? 0 : 1,
-          transform: deslizando ? 'scale(.85)' : 'none',
-          pointerEvents: deslizando ? 'none' : 'auto',
-          transition: 'opacity .18s ease, transform .18s ease',
-        }}
-      >
-        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"
-            fill="#fff"
-          />
-          <path d="M12 6l1.3 3.7L17 11l-3.7 1.3L12 16l-1.3-3.7L7 11l3.7-1.3z" fill={C.terracotta} />
-        </svg>
-      </button>
-
       {abierto && (
         <div
           onClick={() => setAbierto(false)}

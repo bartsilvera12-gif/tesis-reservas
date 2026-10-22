@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom';
+import { abrirAsistente } from '@/components/HelpBubble';
+import { asistenteDisponible } from '@/services/assistant';
 import { C } from '@/lib/theme';
 
 export interface NavItem {
@@ -28,7 +30,14 @@ export const ICONS = {
   bell: 'M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6v-5a6 6 0 0 0-5-5.91V4a1 1 0 0 0-2 0v1.09A6 6 0 0 0 6 11v5l-2 2v1h16v-1z',
 } as const;
 
+/**
+ * La barra de abajo. Al final va "Asistente", que no lleva a otra pantalla:
+ * abre el chat encima de la actual, para preguntar sin perder lo que se
+ * estaba viendo.
+ */
 export function BottomNav({ items }: { items: NavItem[] }) {
+  const total = items.length + (asistenteDisponible ? 1 : 0);
+  const tamLetra = total > 4 ? 10 : 10.5;
   return (
     <nav
       style={{
@@ -63,7 +72,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
               </svg>
               <span
                 style={{
-                  fontSize: items.length > 4 ? 10 : 10.5,
+                  fontSize: tamLetra,
                   fontWeight: isActive ? 800 : 600,
                   color: isActive ? C.terracottaDark : C.muted,
                 }}
@@ -74,6 +83,30 @@ export function BottomNav({ items }: { items: NavItem[] }) {
           )}
         </NavLink>
       ))}
+
+      {asistenteDisponible && (
+        <button
+          onClick={abrirAsistente}
+          aria-label="Abrir el asistente"
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+            padding: '6px 0',
+            minHeight: 48,
+            justifyContent: 'center',
+          }}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+            <path d={ICONS.sparkle} fill={C.terracotta} />
+          </svg>
+          <span style={{ fontSize: tamLetra, fontWeight: 700, color: C.terracottaDark }}>
+            Asistente
+          </span>
+        </button>
+      )}
     </nav>
   );
 }
