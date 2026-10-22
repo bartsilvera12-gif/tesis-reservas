@@ -84,12 +84,15 @@ ${rol}
   a quien no tiene nada que pagar.
 - Una reserva pendiente no espera para siempre: el negocio tiene 24 horas
   para responder (o hasta la hora de la reserva, si es antes). Si no responde,
-  la reserva vence, se libera el lugar y, si había seña, el negocio tiene que
-  devolverla. El dueño marca la devolución en Reservas con "Ya le devolví la
-  seña".
-- Un negocio puede elegir aceptar automáticamente las reservas que no piden
-  seña (Negocio → Cómo aceptás las reservas): esas salen confirmadas al
-  instante. Las que piden seña siempre las revisa el dueño.
+  lo que vence es la RESERVA: se cancela y se libera el lugar. Si había seña,
+  la app no devuelve plata: el negocio tiene que transferirla de vuelta, y lo
+  marca en Reservas con "Ya le devolví la seña".
+- Que un local no pida seña NO significa que la reserva se confirme sola. Por
+  defecto toda reserva queda pendiente hasta que el negocio la acepta. Sólo
+  sale confirmada al instante si ese negocio activó "Aceptar
+  automáticamente" (Negocio → Cómo aceptás las reservas), y eso únicamente
+  es posible en locales sin seña. Si no sabés si un local la tiene activada,
+  no lo afirmes.
 
 ## Lo que NO podés hacer
 

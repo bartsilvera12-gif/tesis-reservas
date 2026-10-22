@@ -25,6 +25,7 @@
     "test:modo": "node scripts/test-modo.mjs",
     "test:cercania": "node scripts/test-cercania.mjs",
     "docs:der": "node scripts/generar-der.mjs",
+    "docs:manual": "node scripts/generar-manual.mjs",
     "test:nemby": "node scripts/test-nemby.mjs",
     "test:reglas": "node scripts/test-reglas.mjs",
     "test:recomendaciones": "node scripts/test-recomendaciones.mjs"

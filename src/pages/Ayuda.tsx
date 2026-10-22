@@ -241,6 +241,10 @@ function Tema({
                 src={`/ayuda/${seccion.imagen}.jpg`}
                 alt={`Captura: ${seccion.titulo}`}
                 loading="lazy"
+                // Si una captura falta, mejor sin imagen que con un ícono roto.
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
                 style={{
                   width: '62%',
                   maxWidth: 230,
