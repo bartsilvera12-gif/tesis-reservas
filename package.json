@@ -28,7 +28,8 @@
     "docs:manual": "node scripts/generar-manual.mjs",
     "test:nemby": "node scripts/test-nemby.mjs",
     "test:reglas": "node scripts/test-reglas.mjs",
-    "test:recomendaciones": "node scripts/test-recomendaciones.mjs"
+    "test:recomendaciones": "node scripts/test-recomendaciones.mjs",
+    "test:profesionales": "node scripts/test-profesionales.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",

@@ -176,6 +176,14 @@ export function BusinessDetail() {
           </div>
         )}
 
+        {/* Quiénes atienden: al reservar se puede elegir con quién. */}
+        {(bizQuery.data?.staff.length ?? 0) > 0 && (
+          <div style={{ fontSize: 13, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>
+            <strong style={{ color: C.ink, fontWeight: 700 }}>Te atienden:</strong>{' '}
+            {bizQuery.data!.staff.map((st) => st.name).join(', ')}. Al reservar elegís con quién.
+          </div>
+        )}
+
         {promo && (
           <div
             style={{

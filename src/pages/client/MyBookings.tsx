@@ -205,6 +205,7 @@ export function MyBookings() {
                       `${shortTime(r.reservation_time)} h`,
                       r.party_size ? personas(r.party_size) : null,
                       r.catalog_item?.name,
+                      r.staff ? `con ${r.staff.name}` : null,
                     ]
                 )
                   .filter(Boolean)

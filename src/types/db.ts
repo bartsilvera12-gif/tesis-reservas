@@ -134,6 +134,18 @@ export interface BusinessHour {
   slots: BusinessHourSlot[];
 }
 
+/** Alguien del equipo de una peluquería, barbería o spa. */
+export interface Staff {
+  id: string;
+  business_id: string;
+  name: string;
+  /** Días que trabaja: 0 = domingo … 6 = sábado. */
+  days: number[];
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface BusinessCapacity {
   id: string;
   business_id: string;
@@ -211,6 +223,8 @@ export interface Reservation {
   check_out_date: string | null;
   /** Hasta cuándo el negocio puede responder una pendiente. */
   expires_at: string | null;
+  /** Con quién es el turno, si el negocio tiene equipo cargado. */
+  staff_id: string | null;
   created_at: string;
   updated_at: string;
   cancelled_at: string | null;
@@ -225,6 +239,7 @@ export interface ReservationWithRelations extends Reservation {
   > | null;
   catalog_item: Pick<CatalogItem, 'id' | 'name'> | null;
   client: Pick<Profile, 'id' | 'full_name' | 'phone'> | null;
+  staff?: Pick<Staff, 'id' | 'name'> | null;
 }
 
 export interface ReservationStatusHistory {

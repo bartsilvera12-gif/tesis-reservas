@@ -13,7 +13,14 @@ import { esPorNoches, exigeServicio, usaCantidadDePersonas } from '@/lib/rubros'
 import { LADO_PORTADA, prepararImagen, ErrorImagen } from '@/lib/image';
 import { Button, Field, Loading, StateView, Stepper, TopBar } from '@/components/ui';
 import { C } from '@/lib/theme';
-import { dayShort, money, personas, shortTime, toISODate, todayISO } from '@/lib/format';
+import {
+  dayShort,
+  money,
+  personas,
+  shortTime,
+  toISODate,
+  todayISO,
+} from '@/lib/format';
 
 /** Próximos 14 días para elegir fecha. */
 function nextDays(count = 14): Date[] {
@@ -37,6 +44,8 @@ export function Reserve() {
   const [time, setTime] = useState<string | null>(null);
   const [partySize, setPartySize] = useState<number | null>(null);
   const [itemId, setItemId] = useState<string | null>(null);
+  // Con quién atenderse. null = sin preferencia: se asigna a quien esté libre.
+  const [staffId, setStaffId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,6 +85,21 @@ export function Reserve() {
   );
 
   /**
+   * El equipo que atiende el día elegido. Sólo en negocios de turnos que lo
+   * cargaron: ahí el cliente puede pedir a alguien en particular.
+   */
+  const diaElegido = new Date(`${date}T00:00:00`).getDay();
+  const equipo = useMemo(
+    () =>
+      porNoches || isTableMode
+        ? []
+        : (bizQuery.data?.staff ?? []).filter((st) => st.days.includes(diaElegido)),
+    [bizQuery.data, diaElegido, porNoches, isTableMode],
+  );
+  // Si quien eligió no trabaja el nuevo día, vuelve a "sin preferencia".
+  const staffElegido = equipo.find((st) => st.id === staffId) ?? null;
+
+  /**
    * Disponibilidad real. En modo mesa hace falta el tamaño primero,
    * porque la capacidad se cuenta por tamaño de mesa.
    */
@@ -86,8 +110,8 @@ export function Reserve() {
   // cuáles caben antes del cierre y cuáles chocan con otras reservas.
   const servicioId = porNoches ? null : itemId;
   const slotsQuery = useAsync(
-    () => fetchAvailability(id, date, partySize, servicioId),
-    [id, date, partySize, servicioId],
+    () => fetchAvailability(id, date, partySize, servicioId, staffElegido?.id ?? null),
+    [id, date, partySize, servicioId, staffElegido?.id],
     { enabled: canQuerySlots },
   );
 
@@ -184,6 +208,7 @@ export function Reserve() {
         time: porNoches ? (time ?? '14:00') : time!,
         partySize: usaPersonas ? partySize : null,
         catalogItemId: itemId,
+        staffId: staffElegido?.id ?? null,
         notes: notes.trim() || null,
         checkOut: porNoches ? checkOut : null,
         depositProof: rutaComprobante,
@@ -235,7 +260,9 @@ export function Reserve() {
           time ? '' : ' y un horario'
         }`
       : servicioTexto
-        ? `${servicioTexto}${time ? '' : ' · falta el horario'}`
+        ? `${servicioTexto}${staffElegido ? ` · con ${staffElegido.name}` : ''}${
+            time ? '' : ' · falta el horario'
+          }`
         : time
           ? 'Turno individual'
           : 'Elegí un horario';
@@ -601,6 +628,68 @@ export function Reserve() {
                   </button>
                 );
               })}
+            </div>
+          </>
+        )}
+
+        {/* Con quién: sólo si el negocio cargó a su equipo */}
+        {equipo.length > 0 && (
+          <>
+            <div style={{ fontSize: 13.5, fontWeight: 800, margin: '18px 0 8px' }}>
+              ¿Con quién?
+            </div>
+            <div className="hscroll" style={{ margin: '0 -20px', padding: '0 20px 4px' }}>
+              {[null, ...equipo].map((st) => {
+                const on = (st?.id ?? null) === (staffElegido?.id ?? null);
+                return (
+                  <button
+                    key={st?.id ?? 'cualquiera'}
+                    onClick={() => {
+                      setStaffId(st?.id ?? null);
+                      setTime(null);
+                    }}
+                    style={{
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      minHeight: 46,
+                      padding: '0 14px 0 6px',
+                      borderRadius: 999,
+                      background: on ? C.cream : C.surface,
+                      border: `1.5px solid ${on ? C.terracotta : C.line}`,
+                      fontSize: 13.5,
+                      fontWeight: on ? 800 : 600,
+                      color: C.ink,
+                      scrollSnapAlign: 'start',
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        background: on ? C.terracotta : C.bg,
+                        color: on ? '#fff' : C.terracottaDark,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 12,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {st ? st.name.trim().charAt(0).toUpperCase() : '✶'}
+                    </span>
+                    {st ? st.name : 'Sin preferencia'}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11.5, color: C.sub, marginTop: 6, lineHeight: 1.45 }}>
+              {staffElegido
+                ? `Ves sólo los horarios libres de ${staffElegido.name}.`
+                : 'Te atiende quien esté libre a esa hora.'}
             </div>
           </>
         )}

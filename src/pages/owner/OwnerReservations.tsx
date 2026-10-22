@@ -394,6 +394,7 @@ export function OwnerReservations() {
                     ? `${r.party_size} ${r.party_size === 1 ? 'persona' : 'personas'}`
                     : null,
                   r.catalog_item?.name,
+                  r.staff ? `con ${r.staff.name}` : null,
                   r.reservation_code,
                 ]
                   .filter(Boolean)

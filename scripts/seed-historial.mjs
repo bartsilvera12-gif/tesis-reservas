@@ -50,6 +50,20 @@ const PESO_DIA = {
   service: [0, 0.5, 0.7, 0.9, 1.0, 1.4, 1.6],
   stay: [0.6, 0.3, 0.3, 0.4, 0.8, 1.6, 1.4],
 };
+/**
+ * Equipos de ejemplo de las peluquerías, barberías y spas, para mostrar cómo
+ * se elige con quién atenderse. Los lavaderos no: ahí da igual quién lava.
+ */
+const EQUIPOS = {
+  'studio-kuna': ['Rosa', 'Liz', 'Fátima'],
+  'barberia-el-prado': ['Juan', 'Marcos'],
+  'barberia-guarani': ['Derlis', 'Hugo'],
+  'nails-ysapy': ['Belén', 'Noelia'],
+  'bella-unas': ['Sonia', 'Gladys'],
+  'aqua-spa-wellness': ['Mirian', 'Patricia', 'Lorena'],
+  'peluqueria-prueba': ['Ana', 'Carla'],
+};
+
 /** Reservas por semana, aproximado. */
 const POR_SEMANA = { table: 4, slot: 4, service: 3.5, stay: 1.5 };
 
@@ -133,6 +147,24 @@ try {
       )
     ).rows.map((r) => r.party_size);
 
+    // El equipo, si el negocio tiene uno de ejemplo. Se carga una sola vez:
+    // si el dueño ya lo cambió, no se toca.
+    const nombres = EQUIPOS[b.slug] ?? [];
+    let equipo = (
+      await c.query(`select id, days from tesisreserva.staff where business_id = $1 and active order by sort_order`, [b.id])
+    ).rows;
+    if (!equipo.length && nombres.length) {
+      for (const [i, nombre] of nombres.entries()) {
+        await c.query(
+          `insert into tesisreserva.staff (business_id, name, sort_order) values ($1, $2, $3)`,
+          [b.id, nombre, i],
+        );
+      }
+      equipo = (
+        await c.query(`select id, days from tesisreserva.staff where business_id = $1 and active order by sort_order`, [b.id])
+      ).rows;
+    }
+
     const servicios = items.filter((i) => i.item_type === 'service');
     const cuartos = items.filter((i) => i.item_type === 'room');
     if (tipo === 'stay' && !cuartos.length) continue;
@@ -191,6 +223,9 @@ try {
         salida.setDate(fecha.getDate() + 1 + Math.floor(rnd() * 3));
         const personas =
           tipo === 'table' ? elegir(rnd, mesas) : tipo === 'stay' ? item.capacity ?? 2 : null;
+        // Con equipo, el turno es con alguien que trabaje ese día.
+        const deTurno = equipo.filter((st) => st.days.includes(dow));
+        const staff = deTurno.length ? elegir(rnd, deTurno).id : null;
         const creada = new Date(fecha);
         creada.setDate(fecha.getDate() - 1 - Math.floor(rnd() * 5));
         if (creada > new Date()) creada.setTime(Date.now() - 3600_000);
@@ -199,15 +234,15 @@ try {
           `insert into tesisreserva.reservations
              (reservation_code, client_id, business_id, catalog_item_id,
               reservation_date, check_out_date, reservation_time, party_size, duration_minutes,
-              status, created_at, cancelled_at, cancellation_reason)
+              status, created_at, cancelled_at, cancellation_reason, staff_id)
            values (tesisreserva.gen_reservation_code(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                    case when $9 in ('cancelled', 'rejected') then $10::timestamptz + interval '1 day' end,
-                   case when $9 = 'rejected' then 'No teníamos lugar en ese horario.' end)
+                   case when $9 = 'rejected' then 'No teníamos lugar en ese horario.' end, $11)
            returning id`,
           [
             cliente, b.id, item?.id ?? null, iso(fecha),
             tipo === 'stay' ? iso(salida) : null, hora, personas, dur,
-            estado, creada.toISOString(),
+            estado, creada.toISOString(), staff,
           ],
         );
 

@@ -541,6 +541,33 @@ alter table tesisreserva.reservations
   check (check_out_date is null or check_out_date > reservation_date);
 
 -- ---------------------------------------------------------------------------
+-- Profesionales (peluquerías, barberías, spas)
+--
+-- Opcional. Si un negocio de turnos carga a su equipo, cada persona tiene su
+-- agenda: atiende de a un cliente por vez y sólo los días que trabaja. El
+-- cliente elige con quién o "sin preferencia", y en ese caso se asigna a
+-- quien esté libre. Sin equipo cargado el negocio sigue funcionando con su
+-- capacidad general ("atendés a N a la vez").
+-- ---------------------------------------------------------------------------
+create table if not exists tesisreserva.staff (
+  id          uuid primary key default gen_random_uuid(),
+  business_id uuid        not null references tesisreserva.businesses (id) on delete cascade,
+  name        text        not null,
+  -- Días que trabaja: 0 = domingo … 6 = sábado.
+  days        int[]       not null default '{0,1,2,3,4,5,6}',
+  active      boolean     not null default true,
+  sort_order  int         not null default 0,
+  created_at  timestamptz not null default now(),
+  constraint staff_name_check check (char_length(trim(name)) between 1 and 60),
+  constraint staff_days_check check (days <@ array[0,1,2,3,4,5,6])
+);
+create index if not exists idx_staff_business on tesisreserva.staff (business_id);
+
+alter table tesisreserva.reservations
+  add column if not exists staff_id uuid references tesisreserva.staff (id) on delete set null;
+create index if not exists idx_reservations_staff on tesisreserva.reservations (staff_id, reservation_date);
+
+-- ---------------------------------------------------------------------------
 -- Ciclo de vida de una reserva
 --
 --   pending ──► confirmed ──► completed | no_show | cancelled
@@ -983,6 +1010,26 @@ create policy promotions_manage on tesisreserva.promotions
   using (tesisreserva.is_business_owner(business_id) or tesisreserva.is_admin())
   with check (tesisreserva.is_business_owner(business_id) or tesisreserva.is_admin());
 
+-- ---- staff -----------------------------------------------------------------
+alter table tesisreserva.staff enable row level security;
+drop policy if exists staff_read   on tesisreserva.staff;
+drop policy if exists staff_manage on tesisreserva.staff;
+
+-- Cualquiera ve al equipo activo de un negocio visible (para elegir con quién).
+create policy staff_read on tesisreserva.staff
+  for select to anon, authenticated
+  using (
+    (active and exists (select 1 from tesisreserva.businesses b
+                         where b.id = business_id and b.active))
+    or tesisreserva.is_business_owner(business_id)
+  );
+
+-- Sólo el dueño de ese negocio lo carga y lo cambia.
+create policy staff_manage on tesisreserva.staff
+  for all to authenticated
+  using (tesisreserva.is_business_owner(business_id))
+  with check (tesisreserva.is_business_owner(business_id));
+
 -- ---- reservations ----------------------------------------------------------
 drop policy if exists reservations_select_own    on tesisreserva.reservations;
 drop policy if exists reservations_select_owner  on tesisreserva.reservations;
@@ -1140,12 +1187,14 @@ create policy notifications_update on tesisreserva.notifications
 -- después rechazarse al confirmar. La firma vieja se borra para que PostgREST
 -- no tenga dos funciones con el mismo nombre entre las que dudar.
 drop function if exists tesisreserva.get_availability(uuid, date, int);
+drop function if exists tesisreserva.get_availability(uuid, date, int, uuid);
 
 create or replace function tesisreserva.get_availability(
   p_business_id     uuid,
   p_date            date,
   p_party_size      int  default null,
-  p_catalog_item_id uuid default null
+  p_catalog_item_id uuid default null,
+  p_staff_id        uuid default null
 )
 returns table (
   slot_time time,
@@ -1158,10 +1207,11 @@ security definer
 set search_path = tesisreserva, public
 as $$
 declare
-  v_biz      tesisreserva.businesses%rowtype;
-  v_dow      int;
-  v_capacity int;
-  v_duration int;
+  v_biz       tesisreserva.businesses%rowtype;
+  v_dow       int;
+  v_capacity  int;
+  v_duration  int;
+  v_con_staff boolean;
 begin
   select * into v_biz from tesisreserva.businesses where id = p_business_id and active;
   if not found then
@@ -1181,6 +1231,69 @@ begin
     into v_duration;
 
   v_dow := extract(dow from p_date)::int;   -- 0 = domingo
+
+  -- ── Con profesionales: cada uno tiene su agenda ─────────────────────────
+  -- En una peluquería o un spa con equipo cargado, el lugar no es "uno de
+  -- los N sillones" sino una persona: un turno está libre si hay alguien que
+  -- trabaje ese día y no tenga otra reserva que se superponga. Si el cliente
+  -- eligió a alguien, sólo cuenta esa persona.
+  v_con_staff := v_biz.reservation_type in ('slot', 'service')
+                 and exists (select 1 from tesisreserva.staff st
+                              where st.business_id = p_business_id and st.active);
+  if v_con_staff then
+    return query
+    with slots as (
+      select gs::time as t
+      from tesisreserva.business_hours h
+      join tesisreserva.business_hour_slots hs on hs.business_hour_id = h.id
+      cross join lateral generate_series(
+        (p_date + hs.opens_at),
+        (p_date + hs.closes_at) - make_interval(mins => v_duration),
+        make_interval(mins => v_biz.slot_step_minutes)
+      ) as gs
+      where h.business_id = p_business_id
+        and h.day_of_week = v_dow
+        and h.enabled
+    ),
+    equipo as (
+      select st.id
+      from tesisreserva.staff st
+      where st.business_id = p_business_id
+        and st.active
+        and v_dow = any (st.days)
+        and (p_staff_id is null or st.id = p_staff_id)
+    ),
+    libres as (
+      select s.t,
+             (select count(*) from equipo e
+               where not exists (
+                 select 1 from tesisreserva.reservations r
+                  where r.staff_id = e.id
+                    and r.reservation_date = p_date
+                    and tesisreserva.ocupa_lugar(r.status, r.expires_at)
+                    and (p_date + s.t, (p_date + s.t) + make_interval(mins => v_duration))
+                        overlaps
+                        (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes))
+               ))::int
+             -- Reservas viejas sin profesional asignado también ocupan a alguien.
+             - case when p_staff_id is null then
+                 (select count(*) from tesisreserva.reservations r
+                   where r.business_id = p_business_id
+                     and r.staff_id is null
+                     and r.reservation_date = p_date
+                     and tesisreserva.ocupa_lugar(r.status, r.expires_at)
+                     and (p_date + s.t, (p_date + s.t) + make_interval(mins => v_duration))
+                         overlaps
+                         (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes)))::int
+               else 0 end as n
+      from slots s
+    )
+    select l.t, greatest(l.n, 0), l.n > 0
+    from libres l
+    where (p_date + l.t) > tesisreserva.ahora_local()
+    order by l.t;
+    return;
+  end if;
 
   -- Capacidad total del "cupo" según el tipo de negocio
   if v_biz.reservation_type = 'table' then
@@ -1304,6 +1417,7 @@ $$;
 -- sobrecarga nueva y PostgREST no sabria cual llamar.
 drop function if exists tesisreserva.create_reservation(uuid, date, time, int, uuid, text);
 drop function if exists tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date);
+drop function if exists tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date, text);
 
 create or replace function tesisreserva.create_reservation(
   p_business_id     uuid,
@@ -1313,7 +1427,8 @@ create or replace function tesisreserva.create_reservation(
   p_catalog_item_id uuid default null,
   p_notes           text default null,
   p_check_out       date default null,
-  p_deposit_proof   text default null
+  p_deposit_proof   text default null,
+  p_staff_id        uuid default null
 )
 returns tesisreserva.reservations
 language plpgsql
@@ -1331,6 +1446,8 @@ declare
   v_deposit  numeric(12,2) := 0;
   v_status   text;
   v_expira   timestamptz;
+  v_staff    uuid;
+  v_staff_nombre text;
   v_res      tesisreserva.reservations%rowtype;
 begin
   -- 1. usuario
@@ -1503,9 +1620,64 @@ begin
     hashtext(p_business_id::text || '|' || p_date::text)
   );
 
+  -- Con equipo cargado, la reserva es con una persona: la que eligió el
+  -- cliente o, sin preferencia, la que esté libre y tenga menos turnos ese
+  -- día (así se reparte el trabajo).
+  if v_biz.reservation_type in ('slot', 'service')
+     and exists (select 1 from tesisreserva.staff st
+                  where st.business_id = p_business_id and st.active) then
+    if p_staff_id is not null then
+      select st.id, st.name into v_staff, v_staff_nombre
+        from tesisreserva.staff st
+       where st.id = p_staff_id and st.business_id = p_business_id and st.active;
+      if not found then
+        raise exception 'Esa persona ya no atiende en este negocio.' using errcode = 'P0002';
+      end if;
+      if not exists (select 1 from tesisreserva.staff st where st.id = v_staff and v_dow = any (st.days)) then
+        raise exception '% no atiende ese día.', v_staff_nombre using errcode = '22023';
+      end if;
+      if exists (
+        select 1 from tesisreserva.reservations r
+         where r.staff_id = v_staff
+           and r.reservation_date = p_date
+           and tesisreserva.ocupa_lugar(r.status, r.expires_at)
+           and (p_date + p_time, (p_date + p_time) + make_interval(mins => v_duration))
+               overlaps
+               (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes))
+      ) then
+        raise exception '% ya tiene ese horario ocupado. Elegí otro o probá sin preferencia.', v_staff_nombre
+          using errcode = '23505';
+      end if;
+    else
+      select st.id, st.name into v_staff, v_staff_nombre
+        from tesisreserva.staff st
+       where st.business_id = p_business_id
+         and st.active
+         and v_dow = any (st.days)
+         and not exists (
+           select 1 from tesisreserva.reservations r
+            where r.staff_id = st.id
+              and r.reservation_date = p_date
+              and tesisreserva.ocupa_lugar(r.status, r.expires_at)
+              and (p_date + p_time, (p_date + p_time) + make_interval(mins => v_duration))
+                  overlaps
+                  (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes))
+         )
+       order by (select count(*) from tesisreserva.reservations r2
+                  where r2.staff_id = st.id and r2.reservation_date = p_date
+                    and tesisreserva.ocupa_lugar(r2.status, r2.expires_at)),
+                st.sort_order, st.name
+       limit 1;
+      if v_staff is null then
+        raise exception 'Ese horario ya no está disponible.' using errcode = '23505';
+      end if;
+    end if;
+    v_capacity := 1;
+    v_used := 0;
+
   -- 'slot' (lavadero, peluquería) y 'service' (spa de uñas) usan el mismo
   -- cupo simultáneo; sólo se diferencian en si hay que elegir un servicio.
-  if v_biz.reservation_type = 'table' then
+  elsif v_biz.reservation_type = 'table' then
     if p_party_size is null then
       raise exception 'Elegí para cuántas personas es la reserva.' using errcode = '22023';
     end if;
@@ -1564,7 +1736,7 @@ begin
     reservation_code, client_id, business_id, catalog_item_id,
     reservation_date, reservation_time, party_size, duration_minutes,
     status, notes, deposit_required, deposit_amount, deposit_status,
-    deposit_proof_url, deposit_proof_at, expires_at
+    deposit_proof_url, deposit_proof_at, expires_at, staff_id
   ) values (
     tesisreserva.gen_reservation_code(), v_uid, p_business_id, p_catalog_item_id,
     p_date, p_time, p_party_size, v_duration,
@@ -1573,7 +1745,8 @@ begin
     case when v_deposit > 0 then 'pending' else 'none' end,
     nullif(trim(coalesce(p_deposit_proof, '')), ''),
     case when p_deposit_proof is not null then now() end,
-    v_expira
+    v_expira,
+    v_staff
   )
   returning * into v_res;
 
@@ -1593,7 +1766,8 @@ begin
   values (
     v_biz.owner_id,
     case when v_status = 'confirmed' then 'Nueva reserva confirmada · ' else 'Nueva reserva · ' end || v_biz.name,
-    'Tenés una nueva reserva para el ' || to_char(p_date, 'DD/MM') || ' a las ' || to_char(p_time, 'HH24:MI') || '.',
+    'Tenés una nueva reserva para el ' || to_char(p_date, 'DD/MM') || ' a las ' || to_char(p_time, 'HH24:MI')
+      || coalesce(' con ' || v_staff_nombre, '') || '.',
     'reservation_created',
     v_res.id
   );
@@ -2304,6 +2478,8 @@ grant insert, update, delete on tesisreserva.business_capacity   to authenticate
 grant insert, update, delete on tesisreserva.catalog_categories  to authenticated;
 grant insert, update, delete on tesisreserva.catalog_items       to authenticated;
 grant insert, update, delete on tesisreserva.promotions          to authenticated;
+grant select                 on tesisreserva.staff               to anon, authenticated;
+grant insert, update, delete on tesisreserva.staff               to authenticated;
 
 grant select                 on tesisreserva.reservations               to authenticated;
 grant select                 on tesisreserva.reservation_status_history to authenticated;
@@ -2312,8 +2488,8 @@ grant select                 on tesisreserva.reservation_payments       to authe
 grant select, update         on tesisreserva.notifications              to authenticated;
 
 -- RPC
-grant execute on function tesisreserva.get_availability(uuid, date, int, uuid)                  to anon, authenticated;
-grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date, text) to authenticated;
+grant execute on function tesisreserva.get_availability(uuid, date, int, uuid, uuid)            to anon, authenticated;
+grant execute on function tesisreserva.create_reservation(uuid, date, time, int, uuid, text, date, text, uuid) to authenticated;
 grant execute on function tesisreserva.set_reservation_status(uuid, text, text)                 to authenticated;
 grant execute on function tesisreserva.mark_deposit_refunded(uuid)                             to authenticated;
 grant execute on function tesisreserva.reply_to_review(uuid, text)                              to authenticated;

@@ -55,6 +55,7 @@ export const AYUDA_CLIENTE: SeccionAyuda[] = [
       '**Servicios** (o **Carta**, o **Alojamientos**): qué ofrece, cuánto cuesta y cuánto dura.',
       '**Reseñas:** lo que opinaron otros clientes y lo que les contestó el negocio.',
       '**Info:** horarios, dirección y mapa. Tocá el **teléfono** para llamar, **Cómo llegar** para que el celular te guíe, o **WhatsApp**.',
+      'Si el local cargó a su equipo, arriba dice **Te atienden** y quiénes son.',
       'Abajo está siempre el botón **Reservar**.',
     ],
     imagen: 'c07-ficha-info',
@@ -67,6 +68,7 @@ export const AYUDA_CLIENTE: SeccionAyuda[] = [
       'En el negocio, tocá **Reservar**.',
       'Elegí el **día**. La fila se desliza para ver más días.',
       'Elegí el **servicio** o, en un restaurante, **para cuántas personas**.',
+      'Si aparece **¿Con quién?**, tocá a la persona que querés que te atienda, o **Sin preferencia**.',
       'Elegí la **hora**. Sólo aparecen las que quedan; las tachadas ya están ocupadas.',
       'Revisá el resumen **TU RESERVA** (servicio, precio y hora) y tocá **Confirmar reserva**.',
     ],
@@ -270,6 +272,19 @@ export const AYUDA_DUENIO: SeccionAyuda[] = [
     imagen: 'd08-servicios',
   },
   {
+    id: 'equipo',
+    titulo: 'Tu equipo: elegir con quién',
+    resumen: 'Para peluquerías, barberías y spas.',
+    pasos: [
+      'En **Negocio**, abrí **Tu equipo**.',
+      'Escribí el nombre de quien atiende y tocá **Añadir**.',
+      'Tocá los **días** para marcar cuáles trabaja cada uno.',
+      'Si alguien se toma unos días, apagá su **interruptor**: deja de aparecer sin borrarlo.',
+    ],
+    nota: 'Cada persona atiende a un cliente por vez y tiene su propia agenda. El cliente elige con quién o **Sin preferencia**, y ahí le toca a quien esté libre. En cada reserva ves **con quién** es.',
+    imagen: 'd14-equipo',
+  },
+  {
     id: 'horarios',
     titulo: 'Horarios',
     resumen: 'Qué días y a qué hora se reserva.',
@@ -333,7 +348,23 @@ export const PREGUNTAS: { pregunta: string; respuesta: string }[] = [
   },
   {
     pregunta: 'No aparece el horario que quiero.',
-    respuesta: 'Ya está ocupado, ya pasó o el servicio no entra antes del cierre. Probá otro día.',
+    respuesta:
+      'Ya está ocupado, ya pasó o el servicio no entra antes del cierre. Si elegiste a alguien, probá con **Sin preferencia** o con otro día.',
+  },
+  {
+    pregunta: '¿Puedo elegir quién me atiende?',
+    respuesta:
+      'Sí, si el local cargó a su equipo: al reservar aparece **¿Con quién?**. Si no te importa, elegí **Sin preferencia**.',
+  },
+  {
+    pregunta: 'Restaurante: ¿qué mesa me toca?',
+    respuesta:
+      'Elegís para cuántas personas y el local te guarda una mesa de ese tamaño. Cuál mesa exactamente lo decide el local cuando llegás. Si son más de lo que se ofrece, consultá por WhatsApp: las mesas no se juntan desde la app.',
+  },
+  {
+    pregunta: '¿Y si el negocio no pide seña?',
+    respuesta:
+      'Reservás sin pagar nada. La reserva queda **pendiente** hasta que el negocio la acepte, salvo que acepte automáticamente: ahí sale **confirmada** al instante.',
   },
   {
     pregunta: '¿La app me cobra algo?',

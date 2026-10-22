@@ -139,7 +139,7 @@ const html = `<!doctype html>
   .bajada { font-size: 11.5pt; color: var(--sub); margin: 2mm 0 5mm; }
   .tarjeta { background: #fff; border: 1px solid var(--linea); border-radius: 4mm; padding: 4mm 5mm; margin-bottom: 6mm; }
   .indice .grupo { font-weight: 800; font-size: 11.5pt; margin: 4mm 0 .5mm; }
-  .indice .linea { display: flex; gap: 3mm; padding: 1mm 0; border-bottom: 1px dashed var(--linea); font-size: 9.8pt; }
+  .indice .linea { display: flex; gap: 3mm; padding: .55mm 0; border-bottom: 1px dashed var(--linea); font-size: 9.4pt; line-height: 1.4; }
   .indice .n { width: 6mm; color: var(--terracota-osc); font-weight: 800; }
   .indice .r { margin-left: auto; color: var(--sub); font-size: 9.2pt; text-align: right; }
 
@@ -183,8 +183,8 @@ const html = `<!doctype html>
 
   /* Preguntas */
   .preguntas { break-before: page; }
-  .preg { break-inside: avoid; padding: 3.2mm 0; border-top: 1px solid var(--linea); }
-  .preg .q { font-weight: 800; font-size: 11pt; margin-bottom: .8mm; }
+  .preg { break-inside: avoid; padding: 2.2mm 0; border-top: 1px solid var(--linea); font-size: 10pt; line-height: 1.42; }
+  .preg .q { font-weight: 800; font-size: 10.6pt; margin-bottom: .5mm; }
 </style>
 </head>
 <body>

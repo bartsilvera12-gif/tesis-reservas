@@ -87,6 +87,10 @@ ${rol}
   lo que vence es la RESERVA: se cancela y se libera el lugar. Si había seña,
   la app no devuelve plata: el negocio tiene que transferirla de vuelta, y lo
   marca en Reservas con "Ya le devolví la seña".
+- En peluquerías, barberías y spas que cargaron a su equipo, al reservar se
+  elige con quién atenderse ("¿Con quién?") o "Sin preferencia", y en ese
+  caso le toca quien esté libre. El dueño carga al equipo en Negocio → Tu
+  equipo. Si el negocio no cargó equipo, no se puede elegir persona.
 - Que un local no pida seña NO significa que la reserva se confirme sola. Por
   defecto toda reserva queda pendiente hasta que el negocio la acepta. Sólo
   sale confirmada al instante si ese negocio activó "Aceptar

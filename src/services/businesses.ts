@@ -9,6 +9,7 @@ import type {
   CatalogCategory,
   CatalogItem,
   Promotion,
+  Staff,
 } from '@/types/db';
 
 /** Columnas que la app necesita de un negocio + su categoría y sus reseñas. */
@@ -197,6 +198,8 @@ export interface BusinessFull {
   catalog: CatalogItem[];
   hours: BusinessHour[];
   promotions: Promotion[];
+  /** Equipo activo; vacío si el negocio no lo cargó. */
+  staff: Staff[];
 }
 
 const FULL_SELECT = `
@@ -206,7 +209,8 @@ const FULL_SELECT = `
   capacity:business_capacity ( * ),
   catalog:catalog_items ( *, category:catalog_categories ( name ) ),
   hours:business_hours ( *, slots:business_hour_slots ( * ) ),
-  promotions ( * )
+  promotions ( * ),
+  staff ( * )
 `;
 
 export async function fetchBusinessFull(
@@ -227,6 +231,7 @@ export async function fetchBusinessFull(
     catalog?: CatalogItem[] | null;
     hours?: BusinessHour[] | null;
     promotions?: Promotion[] | null;
+    staff?: Staff[] | null;
   };
 
   const ahora = Date.now();
@@ -248,6 +253,9 @@ export async function fetchBusinessFull(
         new Date(p.starts_at).getTime() <= ahora &&
         (p.unlimited || !p.ends_at || new Date(p.ends_at).getTime() > ahora),
     ),
+    staff: (row.staff ?? [])
+      .filter((st) => st.active)
+      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)),
   };
 }
 

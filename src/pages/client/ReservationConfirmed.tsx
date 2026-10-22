@@ -17,7 +17,7 @@ export function ReservationConfirmed() {
   const query = useAsync(async () => {
     const { data, error } = await supabase
       .from('reservations')
-      .select('*, business:businesses ( id, name, slug, cover_url, neighborhood, reservation_type ), catalog_item:catalog_items ( id, name ), client:profiles ( id, full_name, phone )')
+      .select('*, business:businesses ( id, name, slug, cover_url, neighborhood, reservation_type ), catalog_item:catalog_items ( id, name ), client:profiles ( id, full_name, phone ), staff:staff ( id, name )')
       .eq('id', id)
       .maybeSingle();
 
@@ -58,6 +58,7 @@ export function ReservationConfirmed() {
           `${shortTime(r.reservation_time)} h`,
           r.party_size ? personas(r.party_size) : null,
           r.catalog_item?.name,
+          r.staff ? `con ${r.staff.name}` : null,
         ]
   )
     .filter(Boolean)

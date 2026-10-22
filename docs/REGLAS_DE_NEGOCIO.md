@@ -41,8 +41,8 @@ Cada negocio tiene un **tipo de reserva** (`businesses.reservation_type`) que de
 | Rubro | Tipo | Recurso | Capacidad | Disponibilidad |
 |---|---|---|---|---|
 | Lavadero | `slot` (turno) | Puesto de lavado | `max_concurrent_reservations`: cuántos vehículos se atienden a la vez | Turnos dentro del horario. Un turno está libre si las reservas que se superponen con él son menos que la capacidad. |
-| Peluquería | `slot` (turno) | Puesto de atención (sillón) | `max_concurrent_reservations`: cuántos clientes se atienden a la vez | Igual que el lavadero. La duración la da el servicio elegido. |
-| Spa de uñas | `service` | Puesto de atención | `max_concurrent_reservations` | Igual, pero **elegir el servicio es obligatorio**, porque define la duración. |
+| Peluquería | `slot` (turno) | Puesto de atención o **profesional** | `max_concurrent_reservations`, o el equipo cargado (cada persona, un cliente por vez) | Igual que el lavadero; con equipo, por persona (sección 3). La duración la da el servicio elegido. |
+| Spa de uñas | `service` | Puesto de atención o **profesional** | `max_concurrent_reservations`, o el equipo cargado | Igual, pero **elegir el servicio es obligatorio**, porque define la duración. |
 | Restaurante | `table` (mesa) | Mesa de un tamaño | `business_capacity`: cuántas mesas hay de cada tamaño (ej. 5 mesas de 2 y 3 de 4) | Se cuenta **por tamaño de mesa**: un horario está libre para 4 personas si quedan mesas de 4 sin reservas que se superpongan. |
 | Hospedaje | `stay` (estadía) | Alojamiento (cabaña, habitación) | `catalog_items.units` (cuántas unidades iguales hay) y `catalog_items.capacity` (cuántas personas entran) | Por **rango de fechas**: una unidad está libre si no hay otra estadía que se superponga (ver sección 5). |
 
@@ -55,19 +55,26 @@ Cada negocio tiene un **tipo de reserva** (`businesses.reservation_type`) que de
 
 ---
 
-## 3. Peluquerías y spas: asignación a un profesional (punto 13)
+## 3. Peluquerías, barberías y spas: elegir con quién atenderse (punto 13)
 
-**Fuera del alcance.** La reserva **no se asocia a un profesional** en particular. El negocio declara cuántos clientes atiende a la vez y la app controla esa capacidad general.
+La reserva **se puede asociar a un profesional**. Es opcional para el negocio: si carga a su equipo, cada persona tiene su propia agenda; si no lo carga, funciona con la capacidad general ("atendés a N a la vez").
 
-Atender agendas individuales implicaría:
+**Modelo:** tabla `staff` (profesionales): `business_id`, `name`, `days` (días que trabaja, 0 = domingo … 6 = sábado), `active`, `sort_order`. Cada reserva guarda `staff_id`.
 
-- una entidad "profesional" con su propio horario;
-- que el cliente elija con quién atenderse;
-- disponibilidad calculada por profesional.
+**Reglas:**
 
-Queda como **línea de trabajo futuro**.
+- **Agenda por persona.** Cada profesional atiende **a un cliente por vez**. Un horario está libre para esa persona si no tiene otra reserva que se superponga (misma regla de intervalos `[inicio, inicio + duración)`).
+- **Días que trabaja.** Sólo se le puede reservar los días marcados, y siempre dentro del horario del negocio.
+- **Elección del cliente.** Al reservar elige **con quién** o **"Sin preferencia"**.
+  - Con alguien elegido, sólo se ofrecen los horarios libres de esa persona.
+  - Sin preferencia, un horario está libre si hay al menos una persona libre. Al confirmar se asigna a quien esté libre y tenga **menos turnos ese día**, para repartir el trabajo.
+- **Capacidad.** Con equipo cargado, a cuántos se atiende a la vez lo define el equipo: tantos como personas trabajen ese día. El número general deja de usarse.
+- **Ausencias.** Si alguien se toma unos días, el dueño lo **desactiva**: deja de aparecer para elegir y no se le pueden hacer reservas nuevas. Sus reservas ya hechas siguen en pie.
+- **Validación en el servidor.** `create_reservation` vuelve a comprobar que esa persona trabaje ese día y esté libre, con el mismo bloqueo por negocio y fecha, así dos clientes no toman a la misma persona a la misma hora.
+- **Visibilidad.** El cliente ve el equipo activo de los negocios visibles. Sólo el dueño de ese negocio puede cargar, modificar o quitar a su equipo (RLS).
+- En las reservas, la confirmación, los avisos al dueño y el asistente figura **con quién** es el turno.
 
----
+Pruebas: `npm run test:profesionales` (22 casos).
 
 ## 4. Restaurantes: asignación de mesas (punto 14)
 
@@ -270,6 +277,7 @@ Los datos los calcula `business_stats` en la base. La regla vive en `src/service
 | `npm run db:test:owner` | Reglas del panel del administrador: estados, reseñas, promociones, carta, horarios, capacidad, estadísticas, aislamiento | 106 |
 | `npm run test:reglas` | Plazo de respuesta, vencimiento, aceptación automática, estados de la seña, escritura sólo por funciones | 41 |
 | `npm run test:recomendaciones` | Recomendaciones del cliente (reseñas, rubros, promos, cercanía) y del panel del negocio | 28 |
+| `npm run test:profesionales` | Elegir profesional: agenda por persona, días que trabaja, sin preferencia, reparto, permisos | 22 |
 | `npm run test:modo` | Modo cliente y modo negocio en la misma cuenta | 14 |
 | `npm run test:cercania` | Orden por distancia en el mapa | 17 |
 | `npm run test:recordatorios` | A quién y cuándo se le recuerda una reserva | 22 |

@@ -11,7 +11,8 @@ const RESERVATION_SELECT = `
   *,
   business:businesses ( id, name, slug, cover_url, neighborhood, reservation_type ),
   catalog_item:catalog_items ( id, name ),
-  client:profiles ( id, full_name, phone )
+  client:profiles ( id, full_name, phone ),
+  staff:staff ( id, name )
 `;
 
 /**
@@ -27,12 +28,15 @@ export async function fetchAvailability(
    * color de dos horas no puede empezar media hora antes del cierre.
    */
   catalogItemId: string | null = null,
+  /** Con quién: sólo cuentan los turnos libres de esa persona. */
+  staffId: string | null = null,
 ): Promise<AvailabilitySlot[]> {
   const { data, error } = await supabase.rpc('get_availability', {
     p_business_id: businessId,
     p_date: date,
     p_party_size: partySize,
     p_catalog_item_id: catalogItemId,
+    p_staff_id: staffId,
   });
 
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar los horarios.'));
@@ -50,6 +54,8 @@ export interface CreateReservationArgs {
   checkOut?: string | null;
   /** Ruta del comprobante en Storage, ya subido. */
   depositProof?: string | null;
+  /** Con quién atenderse; sin esto se asigna a quien esté libre. */
+  staffId?: string | null;
 }
 
 /** Un tipo de alojamiento con lo que queda libre en el rango consultado. */
@@ -103,6 +109,7 @@ export async function createReservation(
     p_notes: args.notes ?? null,
     p_check_out: args.checkOut ?? null,
     p_deposit_proof: args.depositProof ?? null,
+    p_staff_id: args.staffId ?? null,
   });
 
   if (error) throw new Error(friendlyError(error, 'No pudimos crear la reserva.'));

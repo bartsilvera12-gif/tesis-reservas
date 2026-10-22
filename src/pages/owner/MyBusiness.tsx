@@ -19,6 +19,7 @@ import {
   updateCatalogItem,
 } from '@/services/businesses';
 import { uploadBusinessImage } from '@/services/storage';
+import { addStaff, deleteStaff, fetchStaff, updateStaff } from '@/services/staff';
 import { LADO_LOGO, LADO_PORTADA, prepararImagen } from '@/lib/image';
 import {
   Button,
@@ -38,7 +39,7 @@ import { guardarModo } from '@/lib/modo';
 import { usaCantidadDePersonas } from '@/lib/rubros';
 import { dayShort, money, shortTime } from '@/lib/format';
 import { ICONS } from '@/components/BottomNav';
-import type { BusinessHour, BusinessWithMeta, CatalogItem } from '@/types/db';
+import type { BusinessHour, BusinessWithMeta, CatalogItem, Staff } from '@/types/db';
 
 export function MyBusiness() {
   const { active, reload } = useOwnerBusiness();
@@ -83,7 +84,11 @@ export function MyBusiness() {
           <AlojamientosCard toast={toast} />
         ) : (
           <>
-            <CapacityCard toast={toast} />
+            {active.reservation_type === 'table' ? (
+              <CapacityCard toast={toast} />
+            ) : (
+              <TurnosYEquipo toast={toast} />
+            )}
             <CatalogCard toast={toast} />
           </>
         )}
@@ -643,7 +648,219 @@ function HoursCard({ toast }: { toast: Toast }) {
 
 /* ─────────────────────  Capacidad / mesas  ───────────────────── */
 
-function CapacityCard({ toast }: { toast: Toast }) {
+/**
+ * Peluquerías, barberías, spas y lavaderos: a cuántos se atiende a la vez y,
+ * si el negocio lo carga, quién atiende. Van juntos porque con equipo cargado
+ * la capacidad la pone el equipo (cada persona, un cliente por vez) y el
+ * número general deja de usarse.
+ */
+function TurnosYEquipo({ toast }: { toast: Toast }) {
+  const { active } = useOwnerBusiness();
+  const equipoQuery = useAsync(() => fetchStaff(active!.id), [active?.id], {
+    enabled: Boolean(active),
+  });
+  const equipo = equipoQuery.data ?? [];
+  const conEquipo = equipo.some((st) => st.active);
+
+  return (
+    <>
+      <CapacityCard toast={toast} conEquipo={conEquipo} />
+      <EquipoCard
+        toast={toast}
+        equipo={equipo}
+        cargando={equipoQuery.loading && !equipoQuery.data}
+        onCambio={(next) => equipoQuery.setData(next)}
+      />
+    </>
+  );
+}
+
+const DIAS = [1, 2, 3, 4, 5, 6, 0];
+
+function EquipoCard({
+  toast,
+  equipo,
+  cargando,
+  onCambio,
+}: {
+  toast: Toast;
+  equipo: Staff[];
+  cargando: boolean;
+  onCambio: (next: Staff[]) => void;
+}) {
+  const { active } = useOwnerBusiness();
+  const { confirm, node: confirmNode } = useConfirm();
+  const [nombre, setNombre] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  if (!active) return null;
+  const activos = equipo.filter((st) => st.active).length;
+
+  async function agregar() {
+    const limpio = nombre.trim();
+    if (!limpio || busy) return;
+    setBusy(true);
+    try {
+      // Arranca trabajando todos los días que abre el local: el horario del
+      // negocio igual manda, y así no hay que tocar nada para empezar.
+      const nuevo = await addStaff(active!.id, limpio, [0, 1, 2, 3, 4, 5, 6], equipo.length);
+      onCambio([...equipo, nuevo]);
+      setNombre('');
+      toast.success(`${nuevo.name} ya aparece para elegir.`);
+    } catch (err) {
+      toast.fail(err instanceof Error ? err.message : 'No pudimos agregar a esa persona.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cambiar(st: Staff, patch: Partial<Pick<Staff, 'days' | 'active'>>) {
+    const antes = equipo;
+    onCambio(equipo.map((x) => (x.id === st.id ? { ...x, ...patch } : x)));
+    try {
+      await updateStaff(st.id, patch);
+    } catch (err) {
+      onCambio(antes);
+      toast.fail(err instanceof Error ? err.message : 'No pudimos guardar el cambio.');
+    }
+  }
+
+  async function quitar(st: Staff) {
+    const { ok } = await confirm({
+      title: `¿Quitar a ${st.name}?`,
+      message:
+        'Deja de aparecer para elegir. Sus reservas siguen, pero sin nombre asignado. Si sólo se toma unos días, mejor apagá el interruptor.',
+      confirmLabel: 'Quitar',
+      cancelLabel: 'Volver',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteStaff(st.id);
+      onCambio(equipo.filter((x) => x.id !== st.id));
+    } catch (err) {
+      toast.fail(err instanceof Error ? err.message : 'No pudimos quitar a esa persona.');
+    }
+  }
+
+  return (
+    <>
+      <Seccion
+        titulo="Tu equipo"
+        resumen={
+          activos === 0
+            ? 'Opcional: que el cliente elija con quién'
+            : `${activos} ${activos === 1 ? 'persona' : 'personas'} · el cliente elige con quién`
+        }
+      >
+        <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.5 }}>
+          Si cargás a quienes atienden, el cliente puede elegir con quién reservar o dejarlo
+          “sin preferencia”. Cada persona atiende a un cliente por vez y sólo los días marcados.
+        </div>
+
+        {cargando ? (
+          <Loading label="" />
+        ) : (
+          equipo.map((st) => (
+            <div
+              key={st.id}
+              style={{ padding: '12px 0', borderTop: `1px solid ${C.lineSoft}`, marginTop: 10 }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color: st.active ? C.ink : C.sub,
+                  }}
+                >
+                  {st.name}
+                  {!st.active && (
+                    <span style={{ fontSize: 11.5, fontWeight: 600 }}> · no atiende por ahora</span>
+                  )}
+                </div>
+                <Switch
+                  checked={st.active}
+                  onChange={(next) => void cambiar(st, { active: next })}
+                />
+                <button
+                  onClick={() => void quitar(st)}
+                  aria-label={`Quitar a ${st.name}`}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: C.sub,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </button>
+              </div>
+              {/* Días que trabaja: tocar para marcar o desmarcar. */}
+              <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
+                {DIAS.map((d) => {
+                  const on = st.days.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      aria-pressed={on}
+                      aria-label={`${dayShort(d)}: ${on ? 'trabaja' : 'no trabaja'}`}
+                      onClick={() =>
+                        void cambiar(st, {
+                          days: on ? st.days.filter((x) => x !== d) : [...st.days, d].sort(),
+                        })
+                      }
+                      style={{
+                        flex: 1,
+                        minHeight: 36,
+                        borderRadius: 8,
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        background: on ? C.terracotta : C.surface,
+                        color: on ? '#fff' : C.sub,
+                        border: `1px solid ${on ? C.terracotta : C.line}`,
+                        opacity: st.active ? 1 : 0.5,
+                      }}
+                    >
+                      {dayShort(d)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <Field
+              placeholder="Nombre (ej: Juan)"
+              value={nombre}
+              maxLength={60}
+              onChange={(e) => setNombre(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void agregar()}
+            />
+          </div>
+          <Button block={false} loading={busy} disabled={!nombre.trim()} onClick={() => void agregar()}>
+            Añadir
+          </Button>
+        </div>
+      </Seccion>
+      {confirmNode}
+    </>
+  );
+}
+
+function CapacityCard({ toast, conEquipo = false }: { toast: Toast; conEquipo?: boolean }) {
   const { active, reload } = useOwnerBusiness();
   const [concurrent, setConcurrent] = useState(active?.max_concurrent_reservations ?? 1);
 
@@ -659,6 +876,18 @@ function CapacityCard({ toast }: { toast: Toast }) {
   // restaurantes, con mesas. Los hospedajes no pasan por acá: sus alojamientos
   // tienen nombre y precio, así que viven en AlojamientosCard.
   if (active.reservation_type === 'service' || active.reservation_type === 'slot') {
+    // Con equipo cargado, a cuántos se atiende a la vez lo dice el equipo.
+    if (conEquipo) {
+      return (
+        <Seccion titulo="Turnos simultáneos" resumen="Según tu equipo">
+          <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.45 }}>
+            Como cargaste a tu equipo, cada persona atiende a un cliente por vez: se pueden
+            atender tantos a la vez como personas trabajen ese día.
+          </div>
+        </Seccion>
+      );
+    }
+
     return (
       <Seccion
         titulo="Turnos simultáneos"
