@@ -373,7 +373,15 @@ export function BusinessDetail() {
           borderTop: `1px solid ${C.line}`,
         }}
       >
-        <Button onClick={() => navigate(`/app/negocio/${id}/reservar`)}>Reservar</Button>
+        {business.active ? (
+          <Button onClick={() => navigate(`/app/negocio/${id}/reservar`)}>Reservar</Button>
+        ) : (
+          // Se llega acá desde una reserva vieja: el negocio existe pero pausó
+          // las reservas, y el botón sólo llevaría a un error.
+          <div style={{ fontSize: 13, color: C.sub, textAlign: 'center', padding: '8px 0', lineHeight: 1.5 }}>
+            Este negocio no está tomando reservas por ahora.
+          </div>
+        )}
       </div>
     </div>
   );

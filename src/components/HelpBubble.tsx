@@ -56,8 +56,10 @@ export function HelpBubble() {
    * aparece. Esas pantallas terminan en un botón principal que ocupa todo el
    * ancho, y la burbuja quedaba encima de su borde derecho: justo sobre
    * "Reservar" y "Confirmar reserva". Ahí la persona ya sabe qué quiere hacer.
+   * Tampoco en "¡Reserva creada!": su espacio de reserva cortaba el fondo
+   * blanco de la pantalla con una franja, y ahí no hay nada que consultar.
    */
-  const ocultarBoton = /^\/app\/negocio\//.test(location.pathname);
+  const ocultarBoton = /^\/app\/(negocio|reserva)\//.test(location.pathname);
 
   // Cada mensaje nuevo lleva la vista al final.
   useEffect(() => {

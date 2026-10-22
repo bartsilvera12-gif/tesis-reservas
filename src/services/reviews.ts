@@ -1,5 +1,6 @@
 import { supabase, friendlyError } from '@/lib/supabase';
 import type { Review, ReviewWithClient } from '@/types/db';
+import { todayISO } from '@/lib/format';
 
 /**
  * Los nombres de los autores NO salen de `profiles`: esa tabla sólo deja leer
@@ -115,19 +116,25 @@ export async function fetchReviewableReservations(clientId: string): Promise<
 > {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, business_id, reservation_date, business:businesses ( id, name )')
+    .select('id, business_id, reservation_date, reservation_time, business:businesses ( id, name )')
     .eq('client_id', clientId)
     .in('status', ['confirmed', 'completed'])
+    .lte('reservation_date', todayISO())
     .order('reservation_date', { ascending: false });
 
   if (error) throw new Error(friendlyError(error, 'No pudimos cargar tus reservas.'));
 
-  const reservations = (data ?? []) as unknown as {
-    id: string;
-    business_id: string;
-    reservation_date: string;
-    business: { id: string; name: string } | null;
-  }[];
+  // Las de hoy, sólo si ya llegó la hora: se reseña lo que ya pasó.
+  const ahora = Date.now();
+  const reservations = (
+    (data ?? []) as unknown as {
+      id: string;
+      business_id: string;
+      reservation_date: string;
+      reservation_time: string;
+      business: { id: string; name: string } | null;
+    }[]
+  ).filter((r) => new Date(`${r.reservation_date}T${r.reservation_time}`).getTime() <= ahora);
 
   if (!reservations.length) return [];
 

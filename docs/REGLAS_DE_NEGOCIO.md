@@ -219,13 +219,56 @@ En la Tabla 1 del marco teórico corresponde decir "**la aplicación**" o "**la 
 
 ---
 
-## 10. Pruebas automatizadas (evidencia para el capítulo de pruebas)
+## 10. Recomendaciones
+
+Las recomendaciones salen de **reglas sobre los datos reales**, sin IA externa. Así cada recomendación se puede explicar y verificar.
+
+### 10.1 Para el cliente ("Para vos", en el inicio)
+
+Cada negocio activo suma puntos por:
+
+| Criterio | Cómo se calcula |
+|---|---|
+| Afinidad | Rubros en los que la persona ya reservó. Una reserva que se concretó pesa el doble que un pedido. |
+| Promoción | El negocio tiene una promoción vigente. |
+| Reseñas | Promedio bayesiano: se parte de 4 estrellas con peso de 3 reseñas. Un 5 con una sola reseña no le gana a un 4,8 con treinta. |
+| Cercanía | Sólo si la persona dio permiso de ubicación y está en Ñemby. Resta un poco por kilómetro. |
+
+**Reglas:**
+
+- Se muestra primero el mejor de cada rubro, para no recomendar dos negocios del mismo tipo seguidos.
+- No se recomiendan los negocios propios ni uno donde la persona ya tiene una reserva próxima.
+- Cada recomendación muestra **por qué** aparece: "Porque ya reservaste en hospedajes", "Promo: 2x1 los lunes", "A 800 m de vos" o "★ 4,8 en 12 reseñas". Nunca dice "cerca" si no se conoce la ubicación.
+
+La función es `recommended_businesses` en la base de datos.
+
+### 10.2 Para el administrador del negocio (panel)
+
+Se muestran como mucho 4 recomendaciones, ordenadas por urgencia. Cada una lleva, cuando corresponde, un botón a la pantalla donde se resuelve.
+
+| Recomendación | Cuándo aparece |
+|---|---|
+| Por vencer | Hay reservas pendientes cuyo plazo vence en las próximas 6 horas. |
+| Reservas sin responder | 3 o más pendientes. |
+| Se te vencieron reservas | Venció alguna en los últimos 30 días. Si el negocio no pide seña, sugiere la aceptación automática; si la pide, recuerda revisar las devoluciones. |
+| Reseñas negativas sin respuesta / Reseñas sin responder | Hay reseñas sin contestar. Las de 3 estrellas o menos van primero. |
+| Clientes que no vienen | 20% o más de "no asistió" con al menos 5 turnos cerrados en 3 meses. Si no pide seña, sugiere pedirla. |
+| Días flojos | Un día con movimiento recibe menos de la mitad que el más fuerte. Los días cerrados no cuentan. Si no hay promo activa, sugiere crear una. |
+| Horario más pedido | La franja más reservada y el servicio más pedido. En hospedajes se muestra el alojamiento más pedido. |
+| Clientes que vuelven | Dos o más clientes con más de una reserva. |
+
+Las recomendaciones de **demanda** (días flojos y horario más pedido) esperan a tener al menos **5 reservas** en 60 días, para no presentar una casualidad como tendencia. Las demás aparecen desde el primer día.
+
+Los datos los calcula `business_stats` en la base. La regla vive en `src/services/stats.ts`.
+
+## 11. Pruebas automatizadas (evidencia para el capítulo de pruebas)
 
 | Comando | Qué verifica | Casos |
 |---|---|---|
-| `npm run db:test` | Flujos completos, RLS, capacidad, seña, historial, notificaciones | 66 |
+| `npm run db:test` | Flujos completos, RLS, capacidad, seña, historial, notificaciones, reseñas sólo después de la reserva | 67 |
 | `npm run db:test:owner` | Reglas del panel del administrador: estados, reseñas, promociones, carta, horarios, capacidad, estadísticas, aislamiento | 106 |
 | `npm run test:reglas` | Plazo de respuesta, vencimiento, aceptación automática, estados de la seña, escritura sólo por funciones | 41 |
+| `npm run test:recomendaciones` | Recomendaciones del cliente (reseñas, rubros, promos, cercanía) y del panel del negocio | 25 |
 | `npm run test:modo` | Modo cliente y modo negocio en la misma cuenta | 14 |
 | `npm run test:cercania` | Orden por distancia en el mapa | 17 |
 | `npm run test:recordatorios` | A quién y cuándo se le recuerda una reserva | 22 |

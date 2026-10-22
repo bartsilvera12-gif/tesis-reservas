@@ -839,6 +839,18 @@ create policy businesses_read_own on tesisreserva.businesses
   for select to authenticated
   using (owner_id = auth.uid() or tesisreserva.is_admin());
 
+-- Quien reservó en un negocio lo sigue viendo aunque después se pause: si
+-- no, en "Mis reservas" su reserva aparecía a nombre de "Negocio", sin saber
+-- de dónde era. Los listados de la app filtran por `active` igual.
+drop policy if exists businesses_read_reserved on tesisreserva.businesses;
+create policy businesses_read_reserved on tesisreserva.businesses
+  for select to authenticated
+  using (exists (
+    select 1 from tesisreserva.reservations r
+    where r.business_id = tesisreserva.businesses.id
+      and r.client_id = auth.uid()
+  ));
+
 -- Solo una cuenta con el modo negocio activado, y siempre a su nombre.
 create policy businesses_insert_own on tesisreserva.businesses
   for insert to authenticated
@@ -1035,6 +1047,9 @@ create policy reviews_insert_client on tesisreserva.reviews
       where r.business_id = tesisreserva.reviews.business_id
         and r.client_id = auth.uid()
         and r.status in ('confirmed', 'completed')
+        -- Se opina de lo que ya pasó: con una reserva confirmada para
+        -- mañana se podía reseñar un lugar al que todavía no se fue.
+        and (r.reservation_date + r.reservation_time) <= tesisreserva.ahora_local()
     )
   );
 
@@ -1998,6 +2013,68 @@ begin
     ),
     'total_reservations', (
       select count(*) from tesisreserva.reservations where business_id = p_business_id
+    ),
+    -- Las que realmente cuentan como demanda: un pedido rechazado o vencido
+    -- no dice nada de cuándo quiere venir la gente.
+    'valid_reservations', (
+      select count(*) from tesisreserva.reservations
+      where business_id = p_business_id
+        and status in ('pending', 'confirmed', 'completed', 'no_show')
+        and reservation_date >= tesisreserva.hoy() - interval '60 days'
+    ),
+    'unanswered_reviews', (
+      select count(*) from tesisreserva.reviews
+      where business_id = p_business_id and active and owner_reply is null
+    ),
+    'low_unanswered_reviews', (
+      select count(*) from tesisreserva.reviews
+      where business_id = p_business_id and active and owner_reply is null and rating <= 3
+    ),
+    'expiring_soon', (
+      select count(*) from tesisreserva.reservations
+      where business_id = p_business_id and status = 'pending'
+        and expires_at > now() and expires_at <= now() + interval '6 hours'
+    ),
+    'expired_recent', (
+      select count(*) from tesisreserva.reservations
+      where business_id = p_business_id and status = 'expired'
+        and cancelled_at >= now() - interval '30 days'
+    ),
+    'attended', (
+      select count(*) from tesisreserva.reservations
+      where business_id = p_business_id and status = 'completed'
+        and reservation_date >= tesisreserva.hoy() - interval '90 days'
+    ),
+    'no_shows', (
+      select count(*) from tesisreserva.reservations
+      where business_id = p_business_id and status = 'no_show'
+        and reservation_date >= tesisreserva.hoy() - interval '90 days'
+    ),
+    'client_cancellations', (
+      select count(*) from tesisreserva.reservations r
+      where r.business_id = p_business_id and r.status = 'cancelled'
+        and r.reservation_date >= tesisreserva.hoy() - interval '60 days'
+        and exists (select 1 from tesisreserva.reservation_status_history h
+                     where h.reservation_id = r.id and h.new_status = 'cancelled'
+                       and h.changed_by = r.client_id)
+    ),
+    'top_item', (
+      select jsonb_build_object('name', i.name, 'count', count(*))
+      from tesisreserva.reservations r
+      join tesisreserva.catalog_items i on i.id = r.catalog_item_id
+      where r.business_id = p_business_id
+        and r.status in ('pending', 'confirmed', 'completed')
+        and r.reservation_date >= tesisreserva.hoy() - interval '60 days'
+      group by i.id, i.name
+      order by count(*) desc, i.name
+      limit 1
+    ),
+    'returning_clients', (
+      select count(*) from (
+        select client_id from tesisreserva.reservations
+        where business_id = p_business_id and status in ('confirmed', 'completed')
+        group by client_id having count(*) >= 2
+      ) x
     )
   ) into v_result;
 
@@ -2007,9 +2084,26 @@ $$;
 
 -- ---------------------------------------------------------------------------
 --  Recomendaciones para el cliente (reglas simples, sin IA externa)
---  1) categorías que el cliente ya reservó   2) mejor puntuados
+--
+--  Cada negocio suma puntos por:
+--    · afinidad   rubros en los que la persona ya reservó (una reserva que se
+--                 concretó pesa el doble que un pedido)
+--    · promoción  tiene una promo vigente
+--    · reseñas    promedio bayesiano: un 5 con una sola reseña no le gana a un
+--                 4,8 con treinta (se parte de 4 estrellas con peso de 3)
+--    · cercanía   si la app mandó la ubicación, resta un poco por kilómetro
+--
+--  Se devuelve primero el mejor de cada rubro, para no recomendar dos
+--  cabañas seguidas. El motivo que se muestra es el más fuerte de cada uno, y
+--  nunca dice "cerca" si no se conoce la ubicación.
 -- ---------------------------------------------------------------------------
-create or replace function tesisreserva.recommended_businesses(p_limit int default 4)
+drop function if exists tesisreserva.recommended_businesses(int);
+
+create or replace function tesisreserva.recommended_businesses(
+  p_limit int              default 4,
+  p_lat   double precision default null,
+  p_lng   double precision default null
+)
 returns table (
   business_id uuid,
   reason      text
@@ -2020,26 +2114,54 @@ security definer
 set search_path = tesisreserva, public
 as $$
   with fav as (
-    select b.category_id, count(*) as n
+    select b.category_id,
+           sum(case when r.status in ('confirmed', 'completed') then 2 else 1 end) as peso
     from tesisreserva.reservations r
     join tesisreserva.businesses b on b.id = r.business_id
     where r.client_id = auth.uid()
+      and r.status <> 'rejected'
     group by b.category_id
   ),
-  scored as (
+  promo as (
+    select distinct on (p.business_id) p.business_id, p.title
+    from tesisreserva.promotions p
+    where p.active
+      and p.starts_at <= now()
+      and (p.unlimited or p.ends_at is null or p.ends_at > now())
+    order by p.business_id, p.created_at desc
+  ),
+  rv as (
+    select r.business_id, count(*) as n, avg(r.rating)::numeric as prom
+    from tesisreserva.reviews r
+    where r.active
+    group by r.business_id
+  ),
+  base as (
     select
       b.id,
-      case when f.category_id is not null
-           then 'Porque ya reservaste en esta categoría'
-           else 'Muy bien valorado cerca tuyo'
-      end as reason,
-      coalesce(f.n, 0)                                                   as fav_score,
-      coalesce((select avg(rv.rating) from tesisreserva.reviews rv
-                where rv.business_id = b.id and rv.active), 0)           as rating
+      b.category_id,
+      lower(c.name)                                            as rubro,
+      b.neighborhood,
+      coalesce(f.peso, 0)                                      as afinidad,
+      pr.title                                                 as promo,
+      coalesce(rv.n, 0)                                        as resenas,
+      rv.prom,
+      (coalesce(rv.prom, 0) * coalesce(rv.n, 0) + 4.0 * 3) / (coalesce(rv.n, 0) + 3) as puntaje,
+      case when p_lat is not null and p_lng is not null
+                and b.latitude is not null and b.longitude is not null then
+        6371 * 2 * asin(sqrt(
+          power(sin(radians(b.latitude - p_lat) / 2), 2) +
+          cos(radians(p_lat)) * cos(radians(b.latitude)) *
+          power(sin(radians(b.longitude - p_lng) / 2), 2)))
+      end                                                      as km
     from tesisreserva.businesses b
-    left join fav f on f.category_id = b.category_id
+    left join tesisreserva.business_categories c on c.id = b.category_id
+    left join fav   f  on f.category_id = b.category_id
+    left join promo pr on pr.business_id = b.id
+    left join rv       on rv.business_id = b.id
     where b.active
       and b.owner_id is distinct from auth.uid()
+      -- Si ya tiene una reserva en pie ahí, recomendárselo no le sirve.
       and not exists (
         select 1 from tesisreserva.reservations r2
         where r2.business_id = b.id
@@ -2047,10 +2169,38 @@ as $$
           and r2.reservation_date >= tesisreserva.hoy()
           and r2.status in ('pending', 'confirmed')
       )
+  ),
+  puntuado as (
+    select *,
+           afinidad * 1.5
+           + case when promo is not null then 0.6 else 0 end
+           + puntaje
+           - coalesce(least(km, 5) * 0.15, 0)                  as score
+    from base
+  ),
+  diverso as (
+    select *,
+           row_number() over (partition by category_id order by score desc, random()) as orden_rubro
+    from puntuado
   )
-  select id, reason
-  from scored
-  order by fav_score desc, rating desc, random()
+  select
+    id,
+    case
+      when afinidad > 0 then
+        'Porque ya reservaste en ' || rubro
+      when promo is not null then
+        'Promo: ' || promo
+      when km is not null and km < 1 then
+        'A ' || (round(km * 1000 / 50) * 50)::int || ' m de vos'
+      when km is not null and km < 2 then
+        'A ' || replace(to_char(km, 'FM0.0'), '.', ',') || ' km de vos'
+      when resenas >= 3 then
+        '★ ' || replace(to_char(prom, 'FM0.0'), '.', ',') || ' en ' || resenas || ' reseñas'
+      else
+        'Para conocer en ' || coalesce(neighborhood, 'Ñemby')
+    end
+  from diverso
+  order by orden_rubro, score desc
   limit greatest(p_limit, 1);
 $$;
 
@@ -2164,7 +2314,7 @@ grant execute on function tesisreserva.become_owner()                           
 grant execute on function tesisreserva.business_stats(uuid)                                     to authenticated;
 grant execute on function tesisreserva.pending_by_business()                                    to authenticated;
 grant execute on function tesisreserva.get_stay_availability(uuid, date, date)                  to anon, authenticated;
-grant execute on function tesisreserva.recommended_businesses(int)                              to authenticated;
+grant execute on function tesisreserva.recommended_businesses(int, double precision, double precision) to authenticated;
 
 -- Las secuencias las manejan los defaults de las tablas (gen_random_uuid),
 -- así que anon/authenticated no necesitan permisos sobre ellas.

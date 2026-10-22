@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import { CIUDAD } from '@/lib/nemby';
+import { CIUDAD, dentroDeNemby } from '@/lib/nemby';
 import { fetchBusinesses } from '@/services/businesses';
 import { fetchActivePromotions } from '@/services/promotions';
 import { supabase } from '@/lib/supabase';
@@ -30,14 +30,20 @@ export function Home() {
   const promos = useMemo(() => promosQuery.data ?? [], [promosQuery.data]);
 
   /**
-   * Recomendaciones "Para vos": reglas simples sobre datos reales
-   * (categorías ya reservadas + mejor puntuados). Sin IA externa.
+   * Recomendaciones "Para vos": reglas simples sobre datos reales (rubros ya
+   * reservados, promociones, reseñas y, si hay permiso, cercanía). Sin IA
+   * externa. La ubicación sólo se usa si es de Ñemby, igual que en Explorar.
    */
+  const cerca = coords && dentroDeNemby(coords) ? coords : null;
   const recsQuery = useAsync(async () => {
-    const { data, error } = await supabase.rpc('recommended_businesses', { p_limit: 2 });
+    const { data, error } = await supabase.rpc('recommended_businesses', {
+      p_limit: 3,
+      p_lat: cerca?.lat ?? null,
+      p_lng: cerca?.lng ?? null,
+    });
     if (error) return [] as { business_id: string; reason: string }[];
     return (data ?? []) as { business_id: string; reason: string }[];
-  }, []);
+  }, [cerca?.lat, cerca?.lng]);
 
   const recs = useMemo(() => {
     const rows = recsQuery.data ?? [];

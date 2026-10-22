@@ -119,10 +119,18 @@ export function MyBookings() {
         />
       ) : list.length === 0 ? (
         <StateView
-          title={filter === 'upcoming' ? 'No hay reservas todavía.' : 'Sin historial'}
+          title={
+            filter === 'upcoming'
+              ? past.length > 0
+                ? 'No tenés reservas próximas.'
+                : 'No hay reservas todavía.'
+              : 'Sin historial'
+          }
           detail={
             filter === 'upcoming'
-              ? 'Cuando reserves un lugar te va a aparecer acá.'
+              ? past.length > 0
+                ? 'Las anteriores están en Historial.'
+                : 'Cuando reserves un lugar te va a aparecer acá.'
               : 'Tus reservas pasadas van a quedar guardadas en esta sección.'
           }
           actionLabel={filter === 'upcoming' ? 'Explorar lugares' : undefined}
@@ -276,17 +284,22 @@ export function MyBookings() {
                 </div>
               )}
 
-              {(estadoVisible(r) === 'pending' || estadoVisible(r) === 'confirmed') && (
+              {/* Cancelar tiene sentido antes de la hora; reseñar, después.
+                  Antes se ofrecía "Reseñar" en una reserva para mañana, y una
+                  ya asistida en el historial no tenía cómo reseñarse. */}
+              {(puedeCancelar(r) || puedeResenar(r)) && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <Button
-                    variant="danger"
-                    loading={cancelling === r.id}
-                    onClick={() => void onCancel(r)}
-                    style={{ padding: '10px', fontSize: 13, minHeight: 42 }}
-                  >
-                    Cancelar
-                  </Button>
-                  {r.status === 'confirmed' && (
+                  {puedeCancelar(r) && (
+                    <Button
+                      variant="danger"
+                      loading={cancelling === r.id}
+                      onClick={() => void onCancel(r)}
+                      style={{ padding: '10px', fontSize: 13, minHeight: 42 }}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                  {puedeResenar(r) && (
                     <Button
                       variant="ghost"
                       onClick={() => navigate(`/app/negocio/${r.business?.id}/resena`)}
@@ -306,6 +319,20 @@ export function MyBookings() {
       {confirmNode}
     </div>
   );
+}
+
+/** Si ya llegó la hora de la reserva. */
+function yaPaso(r: ReservationWithRelations): boolean {
+  return new Date(`${r.reservation_date}T${r.reservation_time}`).getTime() <= Date.now();
+}
+
+function puedeCancelar(r: ReservationWithRelations): boolean {
+  const estado = estadoVisible(r);
+  return (estado === 'pending' || estado === 'confirmed') && !yaPaso(r);
+}
+
+function puedeResenar(r: ReservationWithRelations): boolean {
+  return (r.status === 'confirmed' || r.status === 'completed') && yaPaso(r);
 }
 
 /** Noches entre dos fechas ISO. La de salida no se cuenta. */

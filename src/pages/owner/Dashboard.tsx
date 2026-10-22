@@ -58,7 +58,10 @@ export function OwnerDashboard() {
   );
 
   const stats = statsQuery.data;
-  const insights = useMemo(() => (stats ? buildInsights(stats) : []), [stats]);
+  const insights = useMemo(
+    () => (stats && active ? buildInsights(stats, active) : []),
+    [stats, active],
+  );
 
   const upcoming = useMemo(
     () =>
@@ -374,7 +377,8 @@ export function OwnerDashboard() {
 
             {insights.length === 0 ? (
               <div style={{ fontSize: 12.5, lineHeight: 1.55, opacity: 0.9 }}>
-                Todavía no hay suficientes datos para generar recomendaciones.
+                Por ahora está todo en orden. Con más reservas vas a ver acá qué días y
+                horarios te conviene reforzar.
               </div>
             ) : (
               insights.map((insight) => (
@@ -401,6 +405,23 @@ export function OwnerDashboard() {
                   >
                     {insight.text}
                   </div>
+                  {insight.accion && (
+                    <button
+                      onClick={() => navigate(insight.accion!.to)}
+                      style={{
+                        marginTop: 8,
+                        minHeight: 34,
+                        padding: '0 12px',
+                        borderRadius: 999,
+                        background: C.sand,
+                        color: '#4E4237',
+                        fontSize: 12,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {insight.accion.label} ›
+                    </button>
+                  )}
                 </div>
               ))
             )}

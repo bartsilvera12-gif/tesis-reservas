@@ -242,10 +242,25 @@ try {
      values ($1,$2,5,'falsa')`, [biz, cliB]);
 
   await asUser(cliA);
+  await expectFail('no se reseña una reserva que todavía no ocurrió',
+    `insert into tesisreserva.reviews (business_id, client_id, rating, comment, reservation_id)
+     values ($1,$2,5,'Antes de ir',$3)`, [biz, cliA, res1.id]);
+
+  // Pasó el día de la reserva: ahora sí se puede opinar.
+  await asAdmin();
+  await c.query(
+    `update tesisreserva.reservations set reservation_date = tesisreserva.hoy() - 1 where id=$1`,
+    [res1.id]);
+  await asUser(cliA);
   const rev = (await c.query(
     `insert into tesisreserva.reviews (business_id, client_id, rating, comment, reservation_id)
      values ($1,$2,5,'Muy bueno',$3) returning *`, [biz, cliA, res1.id])).rows[0];
   ok('cliente con reserva confirmada SÍ puede reseñar', Boolean(rev?.id));
+  // La reserva vuelve a su fecha: las estadísticas de abajo la cuentan como próxima.
+  await asAdmin();
+  await c.query(`update tesisreserva.reservations set reservation_date = $2 where id=$1`,
+    [res1.id, dateISO]);
+  await asUser(cliA);
 
   await expectFail('rating fuera de 1..5 rechazado',
     `insert into tesisreserva.reviews (business_id, client_id, rating)

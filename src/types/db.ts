@@ -298,4 +298,18 @@ export interface BusinessStats {
   week_bars: { dow: number; count: number }[];
   peak_hour: string | null;
   total_reservations: number;
+  /** Reservas en pie o ya ocurridas de los últimos 60 días. */
+  valid_reservations: number;
+  unanswered_reviews: number;
+  /** Sin responder y de 3 estrellas o menos. */
+  low_unanswered_reviews: number;
+  /** Pendientes cuyo plazo vence en las próximas 6 horas. */
+  expiring_soon: number;
+  /** Vencidas sin respuesta en los últimos 30 días. */
+  expired_recent: number;
+  attended: number;
+  no_shows: number;
+  client_cancellations: number;
+  top_item: { name: string; count: number } | null;
+  returning_clients: number;
 }

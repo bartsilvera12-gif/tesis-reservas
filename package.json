@@ -17,6 +17,7 @@
     "db:test": "node scripts/test-flows.mjs",
     "db:images": "node scripts/seed-images.mjs",
     "db:reviewers": "node scripts/seed-reviewers.mjs",
+    "db:historial": "node scripts/seed-historial.mjs",
     "android:icons": "node scripts/gen-icons.mjs",
     "db:test:owner": "node scripts/test-owner.mjs",
     "auth:probar-correo": "node scripts/probar-correo.mjs",
@@ -25,7 +26,8 @@
     "test:cercania": "node scripts/test-cercania.mjs",
     "docs:der": "node scripts/generar-der.mjs",
     "test:nemby": "node scripts/test-nemby.mjs",
-    "test:reglas": "node scripts/test-reglas.mjs"
+    "test:reglas": "node scripts/test-reglas.mjs",
+    "test:recomendaciones": "node scripts/test-recomendaciones.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",
