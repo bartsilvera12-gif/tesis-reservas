@@ -567,6 +567,18 @@ alter table tesisreserva.reservations
   add column if not exists staff_id uuid references tesisreserva.staff (id) on delete set null;
 create index if not exists idx_reservations_staff on tesisreserva.reservations (staff_id, reservation_date);
 
+-- Mesa que ocupa la reserva en un restaurante. `party_size` es cuántas
+-- personas van; `table_size` es el tamaño de la mesa que se les asignó: la
+-- más chica libre en la que entran (un grupo de 5 ocupa una mesa de 6). Las
+-- reservas anteriores a este campo ocupaban una mesa de su mismo tamaño.
+alter table tesisreserva.reservations
+  add column if not exists table_size int;
+alter table tesisreserva.reservations drop constraint if exists reservations_table_size_check;
+alter table tesisreserva.reservations
+  add constraint reservations_table_size_check check (
+    table_size is null or (table_size between 1 and 50 and table_size >= coalesce(party_size, 1))
+  );
+
 -- ---------------------------------------------------------------------------
 -- Ciclo de vida de una reserva
 --
@@ -1180,6 +1192,52 @@ create policy notifications_update on tesisreserva.notifications
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
+--  Restaurantes: qué mesa le toca a un grupo
+-- ---------------------------------------------------------------------------
+/**
+ * La mesa más chica que está libre en ese horario y en la que entra el grupo.
+ * Devuelve el tamaño de la mesa, o null si no queda ninguna donde entren.
+ *
+ * Se recorren los tamaños de menor a mayor: un grupo de 5 con mesas de 4 y de
+ * 6 libres va a la de 6; si las de 6 están ocupadas y hay de 8, va a la de 8.
+ * Así las mesas grandes quedan para los grupos grandes mientras haya otra.
+ * Una mesa ocupada es una reserva vigente que se superpone en el tiempo, con
+ * ese tamaño de mesa (o, si es anterior a `table_size`, con ese tamaño de grupo).
+ */
+create or replace function tesisreserva.mesa_para(
+  p_business_id uuid,
+  p_date        date,
+  p_time        time,
+  p_duration    int,
+  p_party_size  int
+)
+returns int
+language sql
+stable
+security definer
+set search_path = tesisreserva, public
+as $$
+  select c.party_size
+    from tesisreserva.business_capacity c
+   where c.business_id = p_business_id
+     and c.active
+     and c.party_size >= p_party_size
+     and c.quantity > (
+       select count(*)
+         from tesisreserva.reservations r
+        where r.business_id = p_business_id
+          and r.reservation_date = p_date
+          and tesisreserva.ocupa_lugar(r.status, r.expires_at)
+          and coalesce(r.table_size, r.party_size) = c.party_size
+          and (p_date + p_time, (p_date + p_time) + make_interval(mins => p_duration))
+              overlaps
+              (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes))
+     )
+   order by c.party_size
+   limit 1;
+$$;
+
+-- ---------------------------------------------------------------------------
 --  Disponibilidad de horarios para un negocio / fecha / tamaño de grupo
 -- ---------------------------------------------------------------------------
 -- Suma el servicio elegido: los turnos se calculaban con la duración general
@@ -1295,20 +1353,60 @@ begin
     return;
   end if;
 
-  -- Capacidad total del "cupo" según el tipo de negocio
+  -- ── Restaurante: un horario está libre si queda alguna mesa donde entre
+  -- el grupo (de su tamaño o más grande). `remaining` cuenta esas mesas.
+  -- Un grupo más grande que la mesa más grande no tiene horarios.
   if v_biz.reservation_type = 'table' then
     if p_party_size is null then
       return;
     end if;
-    select coalesce(c.quantity, 0) into v_capacity
-    from tesisreserva.business_capacity c
-    where c.business_id = p_business_id
-      and c.party_size = p_party_size
-      and c.active;
-    v_capacity := coalesce(v_capacity, 0);
-  else
-    v_capacity := v_biz.max_concurrent_reservations;
+    return query
+    with slots as (
+      select gs::time as t
+      from tesisreserva.business_hours h
+      join tesisreserva.business_hour_slots hs on hs.business_hour_id = h.id
+      cross join lateral generate_series(
+        (p_date + hs.opens_at),
+        (p_date + hs.closes_at) - make_interval(mins => v_duration),
+        make_interval(mins => v_biz.slot_step_minutes)
+      ) as gs
+      where h.business_id = p_business_id
+        and h.day_of_week = v_dow
+        and h.enabled
+    ),
+    libres as (
+      select s.t,
+             coalesce((
+               select sum(greatest(c.quantity - (
+                        select count(*)
+                          from tesisreserva.reservations r
+                         where r.business_id = p_business_id
+                           and r.reservation_date = p_date
+                           and tesisreserva.ocupa_lugar(r.status, r.expires_at)
+                           and coalesce(r.table_size, r.party_size) = c.party_size
+                           and (p_date + s.t, (p_date + s.t) + make_interval(mins => v_duration))
+                               overlaps
+                               (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes))
+                      ), 0))
+                 from tesisreserva.business_capacity c
+                where c.business_id = p_business_id
+                  and c.active
+                  and c.party_size >= p_party_size
+             ), 0)::int as n
+      from slots s
+    )
+    select l.t, l.n, l.n > 0
+    from libres l
+    where (p_date + l.t) > tesisreserva.ahora_local()
+      -- Si el grupo no entra en ninguna mesa del local, no hay horarios.
+      and exists (select 1 from tesisreserva.business_capacity c
+                   where c.business_id = p_business_id and c.active
+                     and c.quantity > 0 and c.party_size >= p_party_size)
+    order by l.t;
+    return;
   end if;
+
+  v_capacity := v_biz.max_concurrent_reservations;
 
   if v_capacity <= 0 then
     return;
@@ -1335,7 +1433,6 @@ begin
       on r.business_id = p_business_id
      and r.reservation_date = p_date
      and tesisreserva.ocupa_lugar(r.status, r.expires_at)
-     and (p_party_size is null or v_biz.reservation_type <> 'table' or r.party_size = p_party_size)
      -- solapamiento de intervalos [inicio, inicio + duración)
      and (p_date + s.t, (p_date + s.t) + make_interval(mins => v_duration))
          overlaps
@@ -1448,6 +1545,7 @@ declare
   v_expira   timestamptz;
   v_staff    uuid;
   v_staff_nombre text;
+  v_mesa     int;
   v_res      tesisreserva.reservations%rowtype;
 begin
   -- 1. usuario
@@ -1682,24 +1780,26 @@ begin
       raise exception 'Elegí para cuántas personas es la reserva.' using errcode = '22023';
     end if;
 
-    select coalesce(c.quantity, 0) into v_capacity
-    from tesisreserva.business_capacity c
-    where c.business_id = p_business_id and c.party_size = p_party_size and c.active;
-    v_capacity := coalesce(v_capacity, 0);
-
-    if v_capacity <= 0 then
-      raise exception 'No hay mesas configuradas para % personas.', p_party_size using errcode = '23514';
+    -- Un grupo más grande que la mesa más grande del local no entra: se
+    -- rechaza con un mensaje claro en vez de un "no hay lugar" genérico.
+    select max(c.party_size) into v_capacity
+      from tesisreserva.business_capacity c
+     where c.business_id = p_business_id and c.active and c.quantity > 0;
+    if v_capacity is null then
+      raise exception 'Este local todavía no cargó sus mesas.' using errcode = '23514';
+    end if;
+    if p_party_size > v_capacity then
+      raise exception 'La mesa más grande de % es para % personas. Para un grupo de %, consultá directamente con el local.',
+        v_biz.name, v_capacity, p_party_size using errcode = '23514';
     end if;
 
-    select count(*)::int into v_used
-    from tesisreserva.reservations r
-    where r.business_id = p_business_id
-      and r.reservation_date = p_date
-      and tesisreserva.ocupa_lugar(r.status, r.expires_at)
-      and r.party_size = p_party_size
-      and (p_date + p_time, (p_date + p_time) + make_interval(mins => v_duration))
-          overlaps
-          (p_date + r.reservation_time, (p_date + r.reservation_time) + make_interval(mins => r.duration_minutes));
+    -- La mesa más chica libre en la que entra el grupo.
+    v_mesa := tesisreserva.mesa_para(p_business_id, p_date, p_time, v_duration, p_party_size);
+    if v_mesa is null then
+      raise exception 'Ese horario ya no está disponible.' using errcode = '23505';
+    end if;
+    v_capacity := 1;
+    v_used := 0;
   else
     v_capacity := v_biz.max_concurrent_reservations;
 
@@ -1736,7 +1836,7 @@ begin
     reservation_code, client_id, business_id, catalog_item_id,
     reservation_date, reservation_time, party_size, duration_minutes,
     status, notes, deposit_required, deposit_amount, deposit_status,
-    deposit_proof_url, deposit_proof_at, expires_at, staff_id
+    deposit_proof_url, deposit_proof_at, expires_at, staff_id, table_size
   ) values (
     tesisreserva.gen_reservation_code(), v_uid, p_business_id, p_catalog_item_id,
     p_date, p_time, p_party_size, v_duration,
@@ -1746,7 +1846,8 @@ begin
     nullif(trim(coalesce(p_deposit_proof, '')), ''),
     case when p_deposit_proof is not null then now() end,
     v_expira,
-    v_staff
+    v_staff,
+    v_mesa
   )
   returning * into v_res;
 
@@ -1767,7 +1868,8 @@ begin
     v_biz.owner_id,
     case when v_status = 'confirmed' then 'Nueva reserva confirmada · ' else 'Nueva reserva · ' end || v_biz.name,
     'Tenés una nueva reserva para el ' || to_char(p_date, 'DD/MM') || ' a las ' || to_char(p_time, 'HH24:MI')
-      || coalesce(' con ' || v_staff_nombre, '') || '.',
+      || coalesce(' con ' || v_staff_nombre, '')
+      || coalesce(' · ' || p_party_size || ' personas, mesa de ' || v_mesa, '') || '.',
     'reservation_created',
     v_res.id
   );

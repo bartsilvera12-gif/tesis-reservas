@@ -182,3 +182,15 @@ export function slugify(text: string): string {
 
 /** "1 persona" / "4 personas". */
 export const personas = (n: number): string => `${n} ${n === 1 ? 'persona' : 'personas'}`;
+
+/**
+ * "5 personas · mesa de 6": cuántos van y qué mesa les tocó. En un
+ * restaurante la base asigna la mesa más chica libre en la que entran.
+ */
+export const personasYMesa = (r: {
+  party_size: number | null;
+  table_size?: number | null;
+}): string | null =>
+  r.party_size
+    ? `${personas(r.party_size)}${r.table_size ? ` · mesa de ${r.table_size}` : ''}`
+    : null;

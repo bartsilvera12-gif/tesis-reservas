@@ -78,6 +78,12 @@ export function Reserve() {
     () => (bizQuery.data?.capacity ?? []).filter((c) => c.quantity > 0),
     [bizQuery.data],
   );
+  /**
+   * El cliente dice cuántos van, no qué mesa quiere: la base le asigna la
+   * mesa más chica libre en la que entran. El tope es la mesa más grande.
+   */
+  const mesaMasGrande = partyOptions.reduce((max, c) => Math.max(max, c.party_size), 0);
+  const grupoNoEntra = isTableMode && partySize !== null && partySize > mesaMasGrande;
 
   const services = useMemo(
     () => (bizQuery.data?.catalog ?? []).filter((i) => i.item_type === 'service'),
@@ -100,11 +106,11 @@ export function Reserve() {
   const staffElegido = equipo.find((st) => st.id === staffId) ?? null;
 
   /**
-   * Disponibilidad real. En modo mesa hace falta el tamaño primero,
-   * porque la capacidad se cuenta por tamaño de mesa.
+   * Disponibilidad real. En modo mesa hace falta saber cuántos van primero:
+   * un horario está libre si queda alguna mesa donde entren.
    */
   const canQuerySlots =
-    Boolean(business) && !porNoches && (!isTableMode || partySize !== null);
+    Boolean(business) && !porNoches && (!isTableMode || (partySize !== null && !grupoNoEntra));
 
   // El servicio entra en la consulta: cambia cuánto dura el turno, y con eso
   // cuáles caben antes del cierre y cuáles chocan con otras reservas.
@@ -161,17 +167,19 @@ export function Reserve() {
    */
   const faltan: string[] = [];
   if (porNoches) {
-    if (!checkOut || checkOut <= date) faltan.push('la fecha de salida');
+    if (!checkOut) faltan.push('la fecha de salida');
     if (!itemId) faltan.push('el alojamiento');
   } else {
-    if (!time) faltan.push('un horario');
     if (usaPersonas && partySize === null) faltan.push('para cuántas personas');
+    else if (!grupoNoEntra && !time) faltan.push('un horario');
   }
   if (necesitaServicio && !itemId) faltan.push('el servicio');
   // El servidor también lo exige; acá es para no dejar avanzar en falso.
   if (depositTotal > 0 && !comprobante) faltan.push('el comprobante de la seña');
 
-  const ready = faltan.length === 0;
+  // Fechas al revés o iguales: no es que "falte" la salida, está mal puesta.
+  const salidaInvalida = porNoches && Boolean(checkOut) && checkOut <= date;
+  const ready = faltan.length === 0 && !salidaInvalida && !grupoNoEntra;
 
   /** Procesa la imagen al elegirla, igual que en el resto de la app. */
   async function elegirComprobante(archivo: File | undefined) {
@@ -256,9 +264,11 @@ export function Reserve() {
         }`
       : 'Elegí las fechas'
     : isTableMode
-      ? `${partySize ? `Mesa para ${personas(partySize)}` : 'Elegí una mesa'}${
-          time ? '' : ' y un horario'
-        }`
+      ? partySize
+        ? grupoNoEntra
+          ? `Más de ${personas(mesaMasGrande)}`
+          : `${personas(partySize)}${time ? '' : ' · falta el horario'}`
+        : 'Elegí cuántas personas van'
       : servicioTexto
         ? `${servicioTexto}${staffElegido ? ` · con ${staffElegido.name}` : ''}${
             time ? '' : ' · falta el horario'
@@ -551,33 +561,66 @@ export function Reserve() {
                 reservas por ahora.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
-                {partyOptions.map((opt) => {
-                  const on = partySize === opt.party_size;
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => {
-                        setPartySize(opt.party_size);
-                        setTime(null);
-                      }}
-                      style={{
-                        textAlign: 'center',
-                        borderRadius: 10,
-                        padding: '10px 0 8px',
-                        background: on ? C.terracotta : C.surface,
-                        color: on ? '#fff' : C.ink,
-                        border: `1.5px solid ${on ? C.terracotta : C.line}`,
-                      }}
-                    >
-                      <div style={{ fontSize: 17, fontWeight: 800 }}>{opt.party_size}</div>
-                      <div style={{ fontSize: 10, opacity: 0.8 }}>
-                        {opt.quantity} mesa{opt.quantity === 1 ? '' : 's'}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                {/* De 1 a la mesa más grande, y un botón para grupos más grandes. */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
+                  {[...Array.from({ length: mesaMasGrande }, (_, i) => i + 1), mesaMasGrande + 1].map(
+                    (n) => {
+                      const masGrande = n > mesaMasGrande;
+                      const on = masGrande ? grupoNoEntra : partySize === n;
+                      return (
+                        <button
+                          key={n}
+                          aria-label={masGrande ? `Más de ${mesaMasGrande} personas` : personas(n)}
+                          onClick={() => {
+                            setPartySize(n);
+                            setTime(null);
+                          }}
+                          style={{
+                            textAlign: 'center',
+                            borderRadius: 10,
+                            padding: '11px 0',
+                            fontSize: masGrande ? 13 : 17,
+                            fontWeight: 800,
+                            background: on ? C.terracotta : C.surface,
+                            color: on ? '#fff' : C.ink,
+                            border: `1.5px solid ${on ? C.terracotta : C.line}`,
+                          }}
+                        >
+                          {masGrande ? `+${mesaMasGrande}` : n}
+                        </button>
+                      );
+                    },
+                  )}
+                </div>
+                {grupoNoEntra ? (
+                  <div
+                    role="alert"
+                    style={{
+                      marginTop: 10,
+                      fontSize: 13,
+                      color: C.ink,
+                      background: C.warnBg,
+                      border: `1px solid ${C.warnLine}`,
+                      borderRadius: 12,
+                      padding: '12px 14px',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    La mesa más grande de {business.name} es para {personas(mesaMasGrande)}. Para un
+                    grupo más grande no se puede reservar desde la app: consultá directamente con el
+                    local{business.phone ? ` al ${business.phone}` : ''}.
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.sub, marginTop: 8, lineHeight: 1.4 }}>
+                    {partySize
+                      ? `Te damos la mesa más chica libre en la que entren (mesas de ${partyOptions
+                          .map((o) => o.party_size)
+                          .join(', ')}).`
+                      : `Mesas de ${partyOptions.map((o) => o.party_size).join(', ')} personas.`}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -701,7 +744,9 @@ export function Reserve() {
 
         {!canQuerySlots ? (
           <div style={{ fontSize: 13, color: C.sub, padding: '6px 0' }}>
-            Elegí primero para cuántas personas es la reserva.
+            {grupoNoEntra
+              ? 'No hay horarios para un grupo de ese tamaño.'
+              : 'Elegí primero para cuántas personas es la reserva.'}
           </div>
         ) : slotsQuery.loading ? (
           <Loading label="" />
@@ -948,7 +993,11 @@ export function Reserve() {
                 textAlign: 'center',
               }}
             >
-              Falta {faltan.length === 1 ? faltan[0] : `${faltan.slice(0, -1).join(', ')} y ${faltan[faltan.length - 1]}`}.
+              {salidaInvalida
+                ? 'La salida tiene que ser después de la entrada.'
+                : grupoNoEntra
+                  ? `Desde la app se reserva para hasta ${personas(mesaMasGrande)}.`
+                  : `Falta ${faltan.length === 1 ? faltan[0] : `${faltan.slice(0, -1).join(', ')} y ${faltan[faltan.length - 1]}`}.`}
             </div>
           )}
           <Button onClick={onConfirm} disabled={!ready} loading={busy}>

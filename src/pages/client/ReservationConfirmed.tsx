@@ -3,7 +3,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { supabase, friendlyError } from '@/lib/supabase';
 import { Button, Loading, StateView } from '@/components/ui';
 import { C, FONT } from '@/lib/theme';
-import { cuandoVence, friendlyDate, money, personas, shortTime } from '@/lib/format';
+import { cuandoVence, friendlyDate, money, personas, personasYMesa, shortTime } from '@/lib/format';
 import type { ReservationWithRelations } from '@/types/db';
 
 /**
@@ -56,7 +56,7 @@ export function ReservationConfirmed() {
           r.business?.name,
           friendlyDate(r.reservation_date),
           `${shortTime(r.reservation_time)} h`,
-          r.party_size ? personas(r.party_size) : null,
+          personasYMesa(r),
           r.catalog_item?.name,
           r.staff ? `con ${r.staff.name}` : null,
         ]

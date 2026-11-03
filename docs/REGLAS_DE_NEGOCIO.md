@@ -43,7 +43,7 @@ Cada negocio tiene un **tipo de reserva** (`businesses.reservation_type`) que de
 | Lavadero | `slot` (turno) | Puesto de lavado o **profesional** | `max_concurrent_reservations` (cuántos vehículos se atienden a la vez), o el equipo cargado | Turnos dentro del horario. Un turno está libre si las reservas que se superponen con él son menos que la capacidad; con equipo, por persona (sección 3). |
 | Peluquería | `slot` (turno) | Puesto de atención o **profesional** | `max_concurrent_reservations`, o el equipo cargado (cada persona, un cliente por vez) | Igual que el lavadero; con equipo, por persona (sección 3). La duración la da el servicio elegido. |
 | Spa de uñas | `service` | Puesto de atención o **profesional** | `max_concurrent_reservations`, o el equipo cargado | Igual, pero **elegir el servicio es obligatorio**, porque define la duración. |
-| Restaurante | `table` (mesa) | Mesa de un tamaño | `business_capacity`: cuántas mesas hay de cada tamaño (ej. 5 mesas de 2 y 3 de 4) | Se cuenta **por tamaño de mesa**: un horario está libre para 4 personas si quedan mesas de 4 sin reservas que se superpongan. |
+| Restaurante | `table` (mesa) | Mesa de un tamaño | `business_capacity`: cuántas mesas hay de cada tamaño (ej. 5 mesas de 2 y 3 de 4) | El cliente dice **cuántas personas van** y se le asigna **la mesa más chica libre en la que entran**: un horario está libre para 5 personas si queda alguna mesa de 5 o más sin reservas que se superpongan. |
 | Hospedaje | `stay` (estadía) | Alojamiento (cabaña, habitación) | `catalog_items.units` (cuántas unidades iguales hay) y `catalog_items.capacity` (cuántas personas entran) | Por **rango de fechas**: una unidad está libre si no hay otra estadía que se superponga (ver sección 5). |
 
 **Reglas comunes a los cinco:**
@@ -79,14 +79,15 @@ Pruebas: `npm run test:profesionales` (22 casos).
 ## 4. Restaurantes: asignación de mesas (punto 14)
 
 - El negocio carga **cuántas mesas tiene de cada tamaño**: 2, 4, 6 personas, etc.
-- El cliente elige **para cuántas personas** reserva, entre los tamaños que el negocio tiene cargados.
-- La reserva ocupa **una mesa de ese tamaño** durante la duración de la reserva (por defecto 90 minutos).
-- **No se asigna una mesa física numerada.** Se controla cuántas mesas de cada tamaño están ocupadas en cada horario. El dueño decide en el momento cuál ocupa.
-- **Doble asignación.** Una misma mesa no puede asignarse a dos reservas a la vez: si las reservas superpuestas de un tamaño ya igualan la cantidad de mesas de ese tamaño, el horario deja de ofrecerse y `create_reservation` rechaza el pedido ("Ese horario ya no está disponible").
+- El cliente indica **cuántas personas van** (de 1 hasta el tamaño de la mesa más grande del local).
+- **Asignación automática.** La base asigna **la mesa más chica libre en la que entra el grupo** (`mesa_para`): un grupo de 5, con mesas de 4 y de 6 libres, ocupa una de 6. Si las de 6 están ocupadas y hay de 8, va a una de 8. Así las mesas grandes quedan para los grupos grandes mientras haya otra opción. La mesa asignada se guarda en `reservations.table_size` y se muestra al cliente y al dueño ("5 personas · mesa de 6").
+- La reserva ocupa esa mesa durante la duración de la reserva (por defecto 90 minutos).
+- **No se asigna una mesa física numerada.** Se controla cuántas mesas de cada tamaño están ocupadas en cada horario. El dueño decide en el momento cuál de las mesas de 6 ocupa.
+- **Doble asignación.** Una misma mesa no puede asignarse a dos reservas a la vez: si no queda ninguna mesa libre donde entre el grupo, el horario deja de ofrecerse y `create_reservation` rechaza el pedido ("Ese horario ya no está disponible").
+- **Grupo más grande que la mesa más grande.** Se rechaza con un mensaje: "La mesa más grande de Lupe Café es para 6 personas. Para un grupo de 7, consultá directamente con el local." En la pantalla, el botón "+6" muestra ese aviso con el teléfono del local y no ofrece horarios.
 - **Mesas combinadas: fuera del alcance.** Un grupo de 7 no puede reservar juntando una mesa de 4 y una de 3. El negocio que quiera recibir grupos grandes carga ese tamaño de mesa.
-- **Mesa más grande: fuera del alcance.** Un grupo de 3 no ocupa automáticamente una mesa de 4. Se reserva entre los tamaños que el negocio declaró.
 
-Las pruebas que lo verifican están en `test-flows.mjs` (secciones 4 a 7: tope de mesas, solapamiento, otro tamaño sigue libre).
+Las pruebas que lo verifican están en `test-flows.mjs` (secciones 4 a 7: tope de mesas, solapamiento, asignación a una mesa más grande, grupo que no entra).
 
 ---
 

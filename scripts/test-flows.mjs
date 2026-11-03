@@ -44,7 +44,7 @@ const asAdmin = async () => { await c.query(`reset role`); };
 
 let spN = 0;
 /** Un error aborta la transacción: hay que aislarlo con un SAVEPOINT. */
-const expectFail = async (name, sql, params = []) => {
+const expectFail = async (name, sql, params = [], patron = null) => {
   const sp = `sp${++spN}`;
   await c.query(`savepoint ${sp}`);
   try {
@@ -53,6 +53,9 @@ const expectFail = async (name, sql, params = []) => {
     fail++; console.log(`  FAIL  ${name} (no falló, debía fallar)`);
   } catch (e) {
     await c.query(`rollback to savepoint ${sp}`);
+    if (patron && !patron.test(e.message)) {
+      fail++; console.log(`  FAIL  ${name} (otro motivo: ${e.message.slice(0, 70)})`); return;
+    }
     pass++; console.log(`  PASS  ${name} -> ${e.message.slice(0, 62)}`);
   }
 };
@@ -132,10 +135,10 @@ try {
       `insert into tesisreserva.business_hour_slots (business_hour_id, opens_at, closes_at)
        values ($1,'11:00','23:00')`, [h]);
   }
-  // capacidad: 1 sola mesa de 2 para probar el tope
+  // capacidad: 1 mesa de 2 y 1 de 4 para probar el tope y la asignación
   await c.query(
     `insert into tesisreserva.business_capacity (business_id, party_size, quantity)
-     values ($1,2,1),($1,4,2)`, [biz]);
+     values ($1,2,1),($1,4,1)`, [biz]);
 
   console.log('\n--- 3. Un dueño NO puede tocar el negocio de otro ---');
   await asUser(owner2);
@@ -185,8 +188,14 @@ try {
   ok('crea el registro de pago pendiente',
      pay.rows.length === 1 && pay.rows[0].status === 'pending');
 
-  console.log('\n--- 6. Capacidad: el segundo intento debe rebotar ---');
+  ok('a 2 personas les toca la mesa de 2', res1.table_size === 2, `(${res1.table_size})`);
+
+  console.log('\n--- 6. Capacidad: con la mesa de 2 ocupada va a la de 4; después rebota ---');
   await asUser(cliB);
+  const res1b = (await c.query(
+    `select * from tesisreserva.create_reservation($1,$2,'20:00',2,null,null,null,'comprobante.jpg')`,
+    [biz, dateISO])).rows[0];
+  ok('mesa de 2 ocupada: le asigna la de 4', res1b?.table_size === 4, `(${res1b?.table_size})`);
   await expectFail('sin mesas libres -> rechaza',
     `select * from tesisreserva.create_reservation($1,$2,'20:00',2,null,null,null,'comprobante.jpg')`, [biz, dateISO]);
 
@@ -204,11 +213,17 @@ try {
   ok('no ofrece turnos que no entran antes del cierre',
      slots2.rows.every(s => s.slot_time < '22:00:00'));
 
-  console.log('\n--- 7. Otra mesa (4 personas) sigue disponible ---');
+  console.log('\n--- 7. Grupos y mesas ---');
   const res2 = (await c.query(
-    `select * from tesisreserva.create_reservation($1,$2,'20:00',4,null,null,null,'comprobante.jpg')`,
+    `select * from tesisreserva.create_reservation($1,$2,'21:30',3,null,null,null,'comprobante.jpg')`,
     [biz, dateISO])).rows[0];
-  ok('reserva para 4 personas OK', Boolean(res2?.id));
+  ok('3 personas: les toca la mesa de 4 (la más chica donde entran)', res2?.table_size === 4,
+     `(${res2?.table_size})`);
+  await expectFail('un grupo más grande que la mesa más grande se rechaza con mensaje',
+    `select * from tesisreserva.create_reservation($1,$2,'13:00',5,null,null,null,'comprobante.jpg')`,
+    [biz, dateISO], /mesa más grande .* es para 4 personas/);
+  const grande = await c.query(`select * from tesisreserva.get_availability($1,$2,5)`, [biz, dateISO]);
+  ok('y para ese grupo no se ofrecen horarios', grande.rows.length === 0, `(${grande.rows.length})`);
 
   console.log('\n--- 8. Aislamiento entre clientes ---');
   await asUser(cliB);
@@ -292,7 +307,7 @@ try {
   ok('cuenta reseñas', st.reviews_count === 1, JSON.stringify(st.rating_avg));
   ok('promedio de rating', Number(st.rating_avg) === 5);
   ok('cuenta confirmadas', st.confirmed_count === 1, `(${st.confirmed_count})`);
-  ok('cuenta pendientes', st.pending_count === 1, `(${st.pending_count})`);
+  ok('cuenta pendientes', st.pending_count === 2, `(${st.pending_count})`);
   ok('week_bars con 7 días', (st.week_bars ?? []).length === 7);
 
   await asUser(owner2);
@@ -315,7 +330,7 @@ try {
   // owner2 tiene su propio local, así que acá actúa como cliente cualquiera.
   await asUser(owner2);
   const reservaCruzada = await c.query(
-    `select (tesisreserva.create_reservation($1,$2,'21:00',4,null,null,null,'comprobante.jpg')).reservation_code as cod`,
+    `select (tesisreserva.create_reservation($1,$2,'13:00',4,null,null,null,'comprobante.jpg')).reservation_code as cod`,
     [biz, dateISO]);
   ok('un dueño SÍ puede reservar en el local de otro',
     Boolean(reservaCruzada.rows[0].cod), `(${reservaCruzada.rows[0].cod})`);

@@ -359,7 +359,7 @@ export const PREGUNTAS: { pregunta: string; respuesta: string }[] = [
   {
     pregunta: 'Restaurante: ¿qué mesa me toca?',
     respuesta:
-      'Elegís para cuántas personas y el local te guarda una mesa de ese tamaño. Cuál mesa exactamente lo decide el local cuando llegás. Si son más de lo que se ofrece, consultá por WhatsApp: las mesas no se juntan desde la app.',
+      'Elegís cuántas personas van y la app te asigna la mesa más chica libre en la que entran: si son 5 y hay mesas de 4 y de 6, te toca una de 6. Lo ves en la confirmación ("5 personas · mesa de 6"). Cuál de esas mesas exactamente lo decide el local cuando llegás. Si son más que la mesa más grande, la app te avisa y te muestra el teléfono del local: las mesas no se juntan desde la app.',
   },
   {
     pregunta: '¿Y si el negocio no pide seña?',

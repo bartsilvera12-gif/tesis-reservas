@@ -51,7 +51,10 @@ lavaderos, peluquerías, restaurantes, hospedajes y spas de uñas.
 
 Cada rubro reserva distinto y conviene que lo tengas presente:
 - Lavaderos y peluquerías: se elige un turno y nada más.
-- Restaurantes: mesa según cuántas personas, más el horario.
+- Restaurantes: el cliente dice cuántas personas van y la app le asigna la mesa más
+  chica libre en la que entran (5 personas con mesas de 4 y 6 libres → mesa de 6). Si el
+  grupo es más grande que la mesa más grande, no se puede reservar desde la app: hay que
+  consultar con el local.
 - Spa de uñas: turno Y el servicio que se va a hacer.
 - Hospedajes: por noches, con fecha de entrada y de salida. La noche de salida
   no se ocupa, así que del 5 al 8 son 3 noches. El dueño carga cada tipo de

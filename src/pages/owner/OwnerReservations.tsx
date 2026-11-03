@@ -19,6 +19,7 @@ import {
   dayShort,
   estadoVisible,
   money,
+  personasYMesa,
   shortTime,
   toISODate,
 } from '@/lib/format';
@@ -391,7 +392,7 @@ export function OwnerReservations() {
                   // En un lavadero o una peluquería la cantidad de personas no
                   // dice nada: el turno es uno.
                   r.party_size && usaCantidadDePersonas(active.reservation_type)
-                    ? `${r.party_size} ${r.party_size === 1 ? 'persona' : 'personas'}`
+                    ? personasYMesa(r)
                     : null,
                   r.catalog_item?.name,
                   r.staff ? `con ${r.staff.name}` : null,

@@ -1,0 +1,31 @@
+Pruebas de acceso entre negocios y entre clientes (CP15, CP16 y CP17)
+Fecha: 3 de noviembre de 2026
+Sesión: cuenta del dueño de "Barbería de Prueba" (también usa la app como cliente).
+Las consultas se hicieron desde la aplicación abierta, con el mismo cliente de
+datos que usa la app, imitando a alguien que intenta saltarse las pantallas.
+
+CP15 · Un administrador consulta las reservas de otro negocio
+  Pantalla: el panel "Reservas" sólo lista las reservas de Barbería de Prueba.
+  Consulta: reservas de Studio Kuña (negocio de otro dueño)
+    Resultado: 1 fila, RSV-5N5XQL, que es la reserva que esta misma cuenta hizo
+    como cliente. Las reservas de otros clientes en Studio Kuña (por ejemplo
+    RSV-A27P3V, de Andrea Villalba) no se devuelven.
+  Intento de confirmar la reserva ajena RSV-A27P3V
+    Resultado: rechazado, "No tenés permiso sobre esta reserva."
+  Total de reservas visibles para la cuenta: 17 (las suyas como cliente y las
+  de su propio negocio).
+
+CP16 · Un administrador abre un comprobante de otro negocio
+  Comprobante adjunto a RSV-A27P3V (Studio Kuña)
+    Resultado: rechazado, "Object not found" (la política de almacenamiento no
+    lo deja ver).
+  Control: el comprobante adjunto a una reserva de su propio negocio sí se abre.
+
+CP17 · Un cliente consulta la reserva de otro cliente
+  Pantalla: al abrir /app/reserva/<id de una reserva de Andrea en Bella Uñas>/confirmada
+    Resultado: "No pudimos mostrar la reserva. Puede que ya no exista."
+    (captura CP17-reserva-ajena-no-se-muestra.png)
+  Consulta de esa reserva por id
+    Resultado: 0 filas.
+  Reservas de Andrea Villalba visibles para la cuenta: sólo las hechas en
+  Barbería de Prueba, porque es el dueño de ese negocio. Ninguna de otro local.

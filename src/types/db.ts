@@ -210,6 +210,8 @@ export interface Reservation {
   reservation_date: string;
   reservation_time: string;
   party_size: number | null;
+  /** Restaurantes: tamaño de la mesa asignada (puede ser más grande que el grupo). */
+  table_size?: number | null;
   duration_minutes: number;
   status: ReservationStatus;
   notes: string | null;
