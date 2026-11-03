@@ -40,7 +40,7 @@ Cada negocio tiene un **tipo de reserva** (`businesses.reservation_type`) que de
 
 | Rubro | Tipo | Recurso | Capacidad | Disponibilidad |
 |---|---|---|---|---|
-| Lavadero | `slot` (turno) | Puesto de lavado | `max_concurrent_reservations`: cuántos vehículos se atienden a la vez | Turnos dentro del horario. Un turno está libre si las reservas que se superponen con él son menos que la capacidad. |
+| Lavadero | `slot` (turno) | Puesto de lavado o **profesional** | `max_concurrent_reservations` (cuántos vehículos se atienden a la vez), o el equipo cargado | Turnos dentro del horario. Un turno está libre si las reservas que se superponen con él son menos que la capacidad; con equipo, por persona (sección 3). |
 | Peluquería | `slot` (turno) | Puesto de atención o **profesional** | `max_concurrent_reservations`, o el equipo cargado (cada persona, un cliente por vez) | Igual que el lavadero; con equipo, por persona (sección 3). La duración la da el servicio elegido. |
 | Spa de uñas | `service` | Puesto de atención o **profesional** | `max_concurrent_reservations`, o el equipo cargado | Igual, pero **elegir el servicio es obligatorio**, porque define la duración. |
 | Restaurante | `table` (mesa) | Mesa de un tamaño | `business_capacity`: cuántas mesas hay de cada tamaño (ej. 5 mesas de 2 y 3 de 4) | Se cuenta **por tamaño de mesa**: un horario está libre para 4 personas si quedan mesas de 4 sin reservas que se superpongan. |
@@ -55,9 +55,9 @@ Cada negocio tiene un **tipo de reserva** (`businesses.reservation_type`) que de
 
 ---
 
-## 3. Peluquerías, barberías y spas: elegir con quién atenderse (punto 13)
+## 3. Peluquerías, spas y lavaderos: elegir con quién atenderse (punto 13)
 
-La reserva **se puede asociar a un profesional**. Es opcional para el negocio: si carga a su equipo, cada persona tiene su propia agenda; si no lo carga, funciona con la capacidad general ("atendés a N a la vez").
+La reserva **se puede asociar a un profesional** en todos los negocios por turno: peluquerías, barberías, spas de uñas y lavaderos. Es opcional para el negocio: si carga a su equipo, cada persona tiene su propia agenda; si no lo carga, funciona con la capacidad general ("atendés a N a la vez").
 
 **Modelo:** tabla `staff` (profesionales): `business_id`, `name`, `days` (días que trabaja, 0 = domingo … 6 = sábado), `active`, `sort_order`. Cada reserva guarda `staff_id`.
 

@@ -51,17 +51,22 @@ const PESO_DIA = {
   stay: [0.6, 0.3, 0.3, 0.4, 0.8, 1.6, 1.4],
 };
 /**
- * Equipos de ejemplo de las peluquerías, barberías y spas, para mostrar cómo
- * se elige con quién atenderse. Los lavaderos no: ahí da igual quién lava.
+ * Equipos de ejemplo de los negocios por turno (peluquerías, barberías, spas
+ * y lavaderos), para mostrar cómo se elige con quién atenderse. Algunos no
+ * trabajan todos los días: así se ve que cada persona tiene su agenda.
+ * Días: 0 = domingo … 6 = sábado.
  */
+const TODOS = [0, 1, 2, 3, 4, 5, 6];
 const EQUIPOS = {
-  'studio-kuna': ['Rosa', 'Liz', 'Fátima'],
-  'barberia-el-prado': ['Juan', 'Marcos'],
-  'barberia-guarani': ['Derlis', 'Hugo'],
-  'nails-ysapy': ['Belén', 'Noelia'],
-  'bella-unas': ['Sonia', 'Gladys'],
-  'aqua-spa-wellness': ['Mirian', 'Patricia', 'Lorena'],
-  'peluqueria-prueba': ['Ana', 'Carla'],
+  'studio-kuna': [['Rosa', TODOS], ['Liz', TODOS], ['Fátima', [1, 2, 3, 4, 5]]],
+  'barberia-el-prado': [['Juan', TODOS], ['Marcos', [2, 3, 4, 5, 6]]],
+  'barberia-guarani': [['Derlis', TODOS], ['Hugo', [1, 3, 5, 6]]],
+  'nails-ysapy': [['Belén', TODOS], ['Noelia', [4, 5, 6]]],
+  'bella-unas': [['Sonia', TODOS], ['Gladys', [1, 2, 3, 4, 5]]],
+  'aqua-spa-wellness': [['Mirian', TODOS], ['Patricia', TODOS], ['Lorena', [5, 6]]],
+  'peluqueria-prueba': [['Ana', TODOS], ['Carla', [1, 2, 3, 4, 5]]],
+  'lavadero-autolimpio': [['Ramón', TODOS], ['Óscar', TODOS], ['Elías', [1, 2, 3, 4, 5]]],
+  'full-wash-luque': [['Cristian', TODOS], ['Matías', [3, 4, 5, 6]]],
 };
 
 /** Reservas por semana, aproximado. */
@@ -149,21 +154,24 @@ try {
 
     // El equipo, si el negocio tiene uno de ejemplo. Se carga una sola vez:
     // si el dueño ya lo cambió, no se toca.
-    const nombres = EQUIPOS[b.slug] ?? [];
-    let equipo = (
-      await c.query(`select id, days from tesisreserva.staff where business_id = $1 and active order by sort_order`, [b.id])
-    ).rows;
-    if (!equipo.length && nombres.length) {
-      for (const [i, nombre] of nombres.entries()) {
+    // Las personas de ejemplo se crean o se actualizan por nombre. Si el
+    // dueño agregó a alguien más desde la app, no se toca.
+    for (const [i, [nombre, dias]] of (EQUIPOS[b.slug] ?? []).entries()) {
+      const hay = await c.query(
+        `update tesisreserva.staff set days = $3, active = true, sort_order = $4
+          where business_id = $1 and name = $2 returning id`,
+        [b.id, nombre, dias, i],
+      );
+      if (!hay.rowCount) {
         await c.query(
-          `insert into tesisreserva.staff (business_id, name, sort_order) values ($1, $2, $3)`,
-          [b.id, nombre, i],
+          `insert into tesisreserva.staff (business_id, name, days, sort_order) values ($1, $2, $3, $4)`,
+          [b.id, nombre, dias, i],
         );
       }
-      equipo = (
-        await c.query(`select id, days from tesisreserva.staff where business_id = $1 and active order by sort_order`, [b.id])
-      ).rows;
     }
+    const equipo = (
+      await c.query(`select id, days from tesisreserva.staff where business_id = $1 and active order by sort_order`, [b.id])
+    ).rows;
 
     const servicios = items.filter((i) => i.item_type === 'service');
     const cuartos = items.filter((i) => i.item_type === 'room');

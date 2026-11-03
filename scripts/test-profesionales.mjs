@@ -1,5 +1,6 @@
 /**
- * Elegir con quién atenderse: profesionales de peluquerías, barberías y spas.
+ * Elegir con quién atenderse: profesionales de peluquerías, barberías, spas
+ * y lavaderos (todos los negocios por turno).
  *
  *   npm run test:profesionales
  *

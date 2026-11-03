@@ -274,7 +274,7 @@ export const AYUDA_DUENIO: SeccionAyuda[] = [
   {
     id: 'equipo',
     titulo: 'Tu equipo: elegir con quién',
-    resumen: 'Para peluquerías, barberías y spas.',
+    resumen: 'Para peluquerías, barberías, spas y lavaderos.',
     pasos: [
       'En **Negocio**, abrí **Tu equipo**.',
       'Escribí el nombre de quien atiende y tocá **Añadir**.',

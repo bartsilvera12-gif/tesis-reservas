@@ -541,7 +541,7 @@ alter table tesisreserva.reservations
   check (check_out_date is null or check_out_date > reservation_date);
 
 -- ---------------------------------------------------------------------------
--- Profesionales (peluquerías, barberías, spas)
+-- Profesionales (negocios por turno: peluquerías, barberías, spas y lavaderos)
 --
 -- Opcional. Si un negocio de turnos carga a su equipo, cada persona tiene su
 -- agenda: atiende de a un cliente por vez y sólo los días que trabaja. El
