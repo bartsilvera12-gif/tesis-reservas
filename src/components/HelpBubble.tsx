@@ -264,6 +264,24 @@ export function HelpBubble() {
                       </button>
                     ))}
                   </div>
+
+                  {/* Aviso de privacidad: las consultas salen a un proveedor externo. */}
+                  <div
+                    role="note"
+                    style={{
+                      fontSize: 11.5,
+                      color: C.sub,
+                      lineHeight: 1.5,
+                      marginTop: 16,
+                      padding: '10px 12px',
+                      border: `1px solid ${C.line}`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    Las respuestas las genera un servicio de inteligencia artificial externo (Claude,
+                    de Anthropic). Solo se le envían tu consulta y los datos de tu cuenta necesarios
+                    para responder; no incluyas contraseñas ni datos de tarjetas.
+                  </div>
                 </div>
               )}
 
