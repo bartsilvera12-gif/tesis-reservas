@@ -1,0 +1,129 @@
+classDiagram
+  direction LR
+  class Usuario {
+    +nombreCompleto: texto
+    +telefono: texto
+    +rol: cliente | administrador
+    +esDueno: booleano
+    +registrarse()
+    +iniciarSesion()
+  }
+  class Rubro {
+    +nombre: texto
+  }
+  class Negocio {
+    +nombre: texto
+    +tipoReserva: turno | servicio | mesa | estadía
+    +direccion: texto
+    +latitud: decimal
+    +longitud: decimal
+    +exigeSena: booleano
+    +montoSena: decimal
+    +aceptaAutomaticamente: booleano
+    +activo: booleano
+    +consultarDisponibilidad(fecha, servicio, profesional)
+    +estadisticas()
+  }
+  class HorarioAtencion {
+    +diaSemana: entero
+    +habilitado: booleano
+  }
+  class FranjaHoraria {
+    +apertura: hora
+    +cierre: hora
+  }
+  class ItemCatalogo {
+    +nombre: texto
+    +tipo: servicio | plato | alojamiento
+    +precio: decimal
+    +duracionMinutos: entero
+    +capacidad: entero
+    +unidades: entero
+  }
+  class Profesional {
+    +nombre: texto
+    +diasQueAtiende: entero[]
+    +activo: booleano
+  }
+  class Mesas {
+    +tamano: entero
+    +cantidad: entero
+  }
+  class Promocion {
+    +titulo: texto
+    +desde: fecha
+    +hasta: fecha
+  }
+  class Reserva {
+    +codigo: texto
+    +fecha: fecha
+    +hora: hora
+    +fechaSalida: fecha
+    +personas: entero
+    +mesaAsignada: entero
+    +estado: EstadoReserva
+    +estadoSena: EstadoSena
+    +comprobante: texto
+    +venceEl: fecha y hora
+    +crear()
+    +cambiarEstado(nuevo, motivo)
+    +cancelar()
+    +vencer()
+  }
+  class HistorialEstado {
+    +estadoAnterior: texto
+    +estadoNuevo: texto
+    +fecha: fecha y hora
+  }
+  class PagoSena {
+    +monto: decimal
+    +estado: texto
+  }
+  class Resena {
+    +puntaje: 1 a 5
+    +comentario: texto
+    +respuestaDueno: texto
+    +responder(texto)
+  }
+  class Notificacion {
+    +titulo: texto
+    +cuerpo: texto
+    +tipo: texto
+    +leida: booleano
+  }
+  class EstadoReserva {
+    <<enumeración>>
+    pendiente
+    confirmada
+    rechazada
+    cancelada
+    vencida
+    completada
+    no asistió
+  }
+  class EstadoSena {
+    <<enumeración>>
+    sin seña
+    a verificar
+    verificada
+    a devolver
+    devuelta
+  }
+  Usuario "1" -- "0..*" Negocio : administra
+  Rubro "1" -- "0..*" Negocio : clasifica
+  Negocio "1" *-- "0..*" HorarioAtencion
+  HorarioAtencion "1" *-- "1..*" FranjaHoraria
+  Negocio "1" *-- "0..*" ItemCatalogo
+  Negocio "1" *-- "0..*" Profesional
+  Negocio "1" *-- "0..*" Mesas
+  Negocio "1" *-- "0..*" Promocion
+  Usuario "1" -- "0..*" Reserva : realiza
+  Negocio "1" -- "0..*" Reserva : recibe
+  ItemCatalogo "0..1" -- "0..*" Reserva : se reserva
+  Profesional "0..1" -- "0..*" Reserva : atiende
+  Reserva "1" *-- "1..*" HistorialEstado
+  Reserva "1" *-- "0..1" PagoSena
+  Reserva "1" -- "0..1" Resena : se califica
+  Usuario "1" -- "0..*" Notificacion : recibe
+  Reserva ..> EstadoReserva
+  Reserva ..> EstadoSena

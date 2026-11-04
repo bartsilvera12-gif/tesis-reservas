@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Genera el diagrama Entidad-Relación del schema `tesisreserva`.
  *
  *   npm run docs:der
@@ -120,6 +120,7 @@ const ENTIDADES = {
   business_hour_slots:        { es: 'Franja horaria',           grupo: 'negocio' },
   business_capacity:          { es: 'Mesas por tamaño',         grupo: 'negocio' },
   promotions:                 { es: 'Promoción',                grupo: 'negocio' },
+  staff:                      { es: 'Profesional del equipo',   grupo: 'negocio' },
   catalog_categories:         { es: 'Categoría del catálogo',   grupo: 'catalogo' },
   catalog_items:              { es: 'Producto, servicio o alojamiento', grupo: 'catalogo' },
   reservations:               { es: 'Reserva',                  grupo: 'reservas' },
@@ -149,16 +150,17 @@ const PRINCIPALES = {
   business_hour_slots: ['opens_at', 'closes_at'],
   business_capacity: ['party_size', 'quantity'],
   promotions: ['title', 'starts_at', 'ends_at'],
+  staff: ['name', 'days', 'active'],
   catalog_categories: ['name'],
   catalog_items: ['name', 'item_type', 'price', 'capacity', 'units'],
-  reservations: ['reservation_date', 'reservation_time', 'check_out_date', 'status', 'deposit_proof_url'],
+  reservations: ['reservation_date', 'reservation_time', 'check_out_date', 'party_size', 'table_size', 'status', 'deposit_proof_url'],
   reservation_status_history: ['new_status'],
   reservation_payments: ['amount', 'status'],
   reviews: ['rating', 'comment'],
 };
 
 const TIPOS = {
-  int4: 'int', int8: 'bigint', bool: 'bool', float8: 'float', numeric: 'numeric',
+  _int4: 'int[]', int4: 'int', int8: 'bigint', bool: 'bool', float8: 'float', numeric: 'numeric',
   timestamptz: 'timestamptz', text: 'text', uuid: 'uuid', date: 'date', time: 'time',
 };
 
@@ -178,6 +180,8 @@ const RELACIONES = [
   { de: 'business_hours', a: 'business_hour_slots', c: ['1', '0N'], col: 'business_hour_id' },
   { de: 'businesses', a: 'business_capacity', c: ['1', '0N'], col: 'business_id' },
   { de: 'businesses', a: 'promotions', c: ['1', '0N'], col: 'business_id' },
+  { de: 'businesses', a: 'staff', c: ['1', '0N'], col: 'business_id' },
+  { de: 'staff', a: 'reservations', c: ['01', '0N'], col: 'staff_id', verbo: 'atiende' },
   { de: 'businesses', a: 'catalog_categories', c: ['1', '0N'], col: 'business_id' },
   { de: 'businesses', a: 'catalog_items', c: ['1', '0N'], col: 'business_id' },
   { de: 'catalog_categories', a: 'catalog_items', c: ['01', '0N'], col: 'category_id' },
@@ -280,7 +284,7 @@ const COLUMNAS = [
   ['business_hours', 'business_hour_slots', 'business_capacity', 'promotions'],
   ['business_categories', 'businesses'],
   ['profiles', 'catalog_categories', 'catalog_items'],
-  ['notifications', 'reservations'],
+  ['notifications', 'reservations', 'staff'],
   ['reviews', 'reservation_status_history', 'reservation_payments'],
 ];
 
@@ -289,14 +293,14 @@ const POSICION_Y = {
     business_hours: 70, business_hour_slots: 308, business_capacity: 540, promotions: 780,
     business_categories: 70, businesses: 330,
     profiles: 150, catalog_categories: 470, catalog_items: 708,
-    notifications: 70, reservations: 340,
+    notifications: 70, reservations: 340, staff: 1010,
     reviews: 70, reservation_status_history: 410, reservation_payments: 640,
   },
   resumen: {
     business_hours: 70, business_hour_slots: 285, business_capacity: 480, promotions: 675,
     business_categories: 70, businesses: 270,
     profiles: 180, catalog_categories: 400, catalog_items: 615,
-    notifications: 70, reservations: 290,
+    notifications: 70, reservations: 290, staff: 790,
     reviews: 70, reservation_status_history: 320, reservation_payments: 505,
   },
 };
@@ -423,6 +427,13 @@ function rutas(B) {
     // ── Catálogo ──
     'catalog_categories>catalog_items': vertical(B.catalog_categories, B.catalog_items),
     'catalog_items>reservations': enlace(B.catalog_items, R, { carril: 50 }),
+    'staff>reservations': vertical(R, B.staff).reverse(),
+    // Baja desde el negocio por debajo del catálogo hasta el equipo.
+    'businesses>staff': (() => {
+      const x = Math.round(N.x + N.w * 0.93);
+      const y = Math.round(B.staff.y + B.staff.h / 2);
+      return [[x, N.b], [x, y], [B.staff.x, y]];
+    })(),
 
     // ── Reserva ──
     'reservations>reservation_status_history': enlace(R, S),

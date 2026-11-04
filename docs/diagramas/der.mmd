@@ -5,6 +5,8 @@ erDiagram
   business_hours ||--o{ business_hour_slots : "business_hour_id"
   businesses ||--o{ business_capacity : "business_id"
   businesses ||--o{ promotions : "business_id"
+  businesses ||--o{ staff : "business_id"
+  staff |o--o{ reservations : "atiende"
   businesses ||--o{ catalog_categories : "business_id"
   businesses ||--o{ catalog_items : "business_id"
   catalog_categories |o--o{ catalog_items : "category_id"
@@ -80,6 +82,7 @@ erDiagram
     text deposit_account_number
     text deposit_document_id
     text deposit_instructions
+    bool auto_confirm
   }
   business_hours {
     uuid id PK
@@ -118,6 +121,15 @@ erDiagram
     text image_url
     timestamptz created_at
     timestamptz updated_at
+  }
+  staff {
+    uuid id PK
+    uuid business_id FK
+    text name
+    int[] days
+    bool active
+    int sort_order
+    timestamptz created_at
   }
   catalog_categories {
     uuid id PK
@@ -166,6 +178,9 @@ erDiagram
     date check_out_date
     text deposit_proof_url
     timestamptz deposit_proof_at
+    timestamptz expires_at
+    uuid staff_id FK
+    int table_size
   }
   reservation_status_history {
     uuid id PK

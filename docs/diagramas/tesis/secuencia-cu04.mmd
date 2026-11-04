@@ -1,0 +1,28 @@
+sequenceDiagram
+  autonumber
+  actor C as Cliente
+  participant A as Aplicación móvil
+  participant P as API (Supabase)
+  participant B as Base de datos (PostgreSQL)
+  actor D as Administrador
+  C->>A: Elige negocio, servicio, fecha y profesional (opcional)
+  A->>P: get_availability(negocio, fecha, servicio, profesional)
+  P->>B: Consulta con el usuario autenticado
+  B-->>P: Horarios con algún recurso libre
+  P-->>A: Horarios disponibles
+  A-->>C: Muestra los horarios libres
+  C->>A: Elige un horario y confirma
+  A->>P: create_reservation(negocio, fecha, hora, servicio, profesional)
+  P->>B: Ejecuta la función transaccional
+  Note over B: Bloquea negocio y fecha y vuelve a verificar la capacidad
+  alt Hay un recurso libre
+    Note over B: Asigna el recurso según el rubro y registra la reserva
+    B-->>D: Notificación interna "Nueva reserva"
+    B-->>P: Reserva pendiente o confirmada
+    P-->>A: Datos de la reserva
+    A-->>C: Muestra el código y el estado
+  else El recurso se ocupó mientras elegía
+    B-->>P: Error "Ese horario ya no está disponible"
+    P-->>A: Error
+    A-->>C: Informa y actualiza los horarios
+  end

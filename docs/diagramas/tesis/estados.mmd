@@ -1,0 +1,17 @@
+stateDiagram-v2
+  direction TB
+  state "No asistió" as NoAsistio
+  [*] --> Pendiente: requiere aprobación<br/>o el negocio pide seña
+  [*] --> Confirmada: sin seña y con<br/>aceptación automática
+  Pendiente --> Confirmada: el administrador acepta<br/>(seña verificada)
+  Pendiente --> Rechazada: el administrador rechaza
+  Pendiente --> Cancelada: el cliente cancela
+  Pendiente --> Vencida: el sistema detecta que pasó<br/>el plazo de 24 h o la hora reservada
+  Confirmada --> Cancelada: cancela el cliente<br/>o el administrador
+  Confirmada --> Completada: el cliente asistió
+  Confirmada --> NoAsistio: el cliente no se presentó
+  Rechazada --> [*]
+  Cancelada --> [*]
+  Vencida --> [*]
+  Completada --> [*]
+  NoAsistio --> [*]

@@ -1,0 +1,29 @@
+sequenceDiagram
+  autonumber
+  actor C as Cliente
+  participant A as Aplicación móvil
+  participant S as Almacenamiento
+  participant B as Base de datos
+  actor D as Administrador
+  C->>A: Transfiere la seña fuera de la app y elige la imagen del comprobante
+  A->>S: Sube el comprobante a la carpeta del cliente
+  S-->>A: Ruta del archivo
+  A->>B: create_reservation(..., comprobante)
+  Note over B: Exige el comprobante y verifica la capacidad
+  B-->>A: Reserva pendiente, seña "a verificar"
+  B-->>D: Notificación "Nueva reserva"
+  D->>A: Abre la reserva y pide ver el comprobante
+  A->>S: Solicita el archivo
+  S-->>A: Imagen (sólo para el titular y el dueño del negocio)
+  alt El administrador acepta
+    D->>A: Aceptar
+    A->>B: set_reservation_status(confirmada)
+    B-->>C: Notificación "Reserva confirmada", seña verificada
+  else El administrador rechaza
+    D->>A: Rechazar con un motivo
+    A->>B: set_reservation_status(rechazada, motivo)
+    B-->>C: Notificación "Reserva rechazada", seña a devolver
+  else Nadie responde dentro del plazo
+    Note over B: La tarea programada la marca vencida y libera el recurso
+    B-->>C: Notificación "Tu reserva venció", seña a devolver
+  end
