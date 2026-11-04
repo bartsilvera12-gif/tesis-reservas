@@ -12,36 +12,33 @@ from PIL import Image, ImageDraw, ImageFont
 RAIZ = Path(__file__).resolve().parent.parent
 ORIGEN = RAIZ / 'docs' / 'pruebas-tabla12'
 SALIDA = RAIZ / 'docs' / 'diagramas' / 'tesis'
-FUENTE = ImageFont.truetype('C:/Windows/Fonts/arial.ttf', 28)
+FUENTE = ImageFont.truetype('C:/Windows/Fonts/arial.ttf', 40)
 
 LAMINAS = {
-    'evidencias-1-turnos': [
+    'evidencias-1-turnos-mesas-hospedaje': [
         ('CP01a-cristian-ocupado', 'CP01 (a)'), ('CP01b-asignado-matias', 'CP01 (b)'),
         ('CP02-sin-lugar-12h', 'CP02'), ('CP03a-juan-1030-ocupado', 'CP03 (a)'),
         ('CP03b-asignado-marcos', 'CP03 (b)'), ('CP04-asignada-gladys', 'CP04'),
-    ],
-    'evidencias-2-mesas-hospedaje': [
         ('CP05a-grupo-de-5', 'CP05 (a)'), ('CP05b-asignada-mesa-de-6', 'CP05 (b)'),
         ('CP06-grupo-mayor-rechazado', 'CP06'), ('CP07-suite-sin-disponibilidad', 'CP07'),
         ('CP08-suite-12-al-14-aceptada', 'CP08'), ('CP09-salida-igual-entrada-rechazada', 'CP09'),
     ],
-    'evidencias-3-sena': [
+    'evidencias-2-sena-seguridad-avisos': [
         ('CP10-sena-sin-comprobante', 'CP10'), ('CP11a-comprobante-recibido', 'CP11 (a)'),
         ('CP11b-mis-reservas-comprobante-enviado', 'CP11 (b)'), ('CP12a-vencida', 'CP12 (a)'),
         ('CP12b-horario-liberado', 'CP12 (b)'), ('CP13a-rechazada-panel', 'CP13'),
-        ('CP14-horario-liberado', 'CP14'),
-    ],
-    'evidencias-4-seguridad-avisos': [
-        ('CP17-reserva-ajena-no-se-muestra', 'CP17'), ('CP18b-segunda-rechazada', 'CP18'),
-        ('CP19a-confirmada-panel', 'CP19 (a)'), ('CP19b-notificacion-cliente', 'CP19 (b)'),
-        ('CP20a-consulta-de-uso', 'CP20 (a)'), ('CP20b-no-expone-datos', 'CP20 (b)'),
+        ('CP14-horario-liberado', 'CP14'), ('CP17-reserva-ajena-no-se-muestra', 'CP17'),
+        ('CP18b-segunda-rechazada', 'CP18'), ('CP19a-confirmada-panel', 'CP19 (a)'),
+        ('CP19b-notificacion-cliente', 'CP19 (b)'), ('CP20a-consulta-de-uso', 'CP20 (a)'),
+        ('CP20b-no-expone-datos', 'CP20 (b)'),
     ],
 }
 
 ANCHO, ALTO = 364, 788
-COLS, HUECO, MARGEN, PIE = 4, 34, 24, 60
+HUECO, MARGEN, PIE = 30, 24, 60
 
 for nombre, capturas in LAMINAS.items():
+    COLS = (len(capturas) + 1) // 2
     filas = (len(capturas) + COLS - 1) // COLS
     lienzo = Image.new('RGB', (MARGEN * 2 + COLS * ANCHO + (COLS - 1) * HUECO,
                                MARGEN * 2 + filas * (ALTO + PIE) + (filas - 1) * 10), 'white')
