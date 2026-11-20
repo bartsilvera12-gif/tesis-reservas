@@ -45,6 +45,28 @@ const corto = (s: unknown, n = 120): string =>
     .trim()
     .slice(0, n);
 
+/**
+ * Dónde queda un negocio: dirección, barrio y ciudad, y el enlace de Google
+ * Maps armado con sus coordenadas. El enlace lo arma el servidor (nunca el
+ * modelo) para que no pueda inventar uno que lleve a otro lado.
+ */
+function ubicacion(n: {
+  address?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}): string {
+  const texto = [corto(n.address, 80), corto(n.neighborhood, 40), corto(n.city, 40)]
+    .filter(Boolean)
+    .join(', ');
+  const mapa =
+    n.latitude != null && n.longitude != null
+      ? ` · Mapa: https://www.google.com/maps/search/?api=1&query=${n.latitude},${n.longitude}`
+      : ' · sin ubicación en el mapa';
+  return `Dirección: ${texto || 'sin cargar'}${mapa}`;
+}
+
 const hhmm = (t: unknown): string => String(t ?? '').slice(0, 5);
 
 /**
@@ -165,7 +187,7 @@ async function contextoDueno(
   const { data: negocios } = await supabase
     .from('businesses')
     .select(
-      'id, name, active, neighborhood, city, reservation_type, deposit_enabled, deposit_amount, deposit_per_person, default_slot_duration_minutes, max_concurrent_reservations, category:business_categories(name)',
+      'id, name, active, address, neighborhood, city, latitude, longitude, reservation_type, deposit_enabled, deposit_amount, deposit_per_person, default_slot_duration_minutes, max_concurrent_reservations, category:business_categories(name)',
     )
     .eq('owner_id', ownerId);
 
@@ -234,7 +256,8 @@ async function contextoDueno(
     partes.push(
       '',
       `## Negocio: ${corto(n.name, 60)}`,
-      `- Categoría: ${cat} · Zona: ${corto(n.neighborhood, 40) || '—'}, ${corto(n.city, 40)}`,
+      `- Categoría: ${cat}`,
+      `- ${ubicacion(n)}`,
       `- Estado: ${n.active ? 'activo' : 'inactivo'} · Reservas ${
         n.reservation_type === 'table'
           ? 'por mesa'
@@ -340,7 +363,7 @@ async function contextoCliente(
   const { data: reservas } = await supabase
     .from('reservations')
     .select(
-      'reservation_date, reservation_time, party_size, status, reservation_code, deposit_required, deposit_amount, deposit_status, deposit_proof_url, business:businesses(name, neighborhood), catalog_item:catalog_items(name), staff:staff(name)',
+      'reservation_date, reservation_time, party_size, status, reservation_code, deposit_required, deposit_amount, deposit_status, deposit_proof_url, business:businesses(name, address, neighborhood, city, latitude, longitude), catalog_item:catalog_items(name), staff:staff(name)',
     )
     .eq('client_id', clientId)
     .order('reservation_date', { ascending: false })
@@ -349,11 +372,11 @@ async function contextoCliente(
   if (reservas && reservas.length > 0) {
     partes.push('', '## Tus reservas');
     for (const r of reservas) {
-      const b = r.business as { name?: string; neighborhood?: string } | null;
+      const b = r.business as Parameters<typeof ubicacion>[0] & { name?: string } | null;
       const item = (r.catalog_item as Nombrable)?.name;
       const con = (r.staff as Nombrable)?.name;
       partes.push(
-        `- ${corto(b?.name, 50)} · ${r.reservation_date} ${hhmm(r.reservation_time)}${r.party_size ? ` · ${r.party_size} personas` : ''}${item ? ` · ${corto(item, 40)}` : ''}${con ? ` · con ${corto(con, 40)}` : ''} · estado: ${estadoReserva(r.status)} (código ${r.reservation_code})${r.deposit_required ? ` · seña ${money(r.deposit_amount)} (${estadoSena(r.deposit_status, Boolean(r.deposit_proof_url))})` : ' · este local NO pide seña: no hay nada que pagar ni comprobante que subir'}`,
+        `- ${corto(b?.name, 50)} · ${r.reservation_date} ${hhmm(r.reservation_time)}${r.party_size ? ` · ${r.party_size} personas` : ''}${item ? ` · ${corto(item, 40)}` : ''}${con ? ` · con ${corto(con, 40)}` : ''} · estado: ${estadoReserva(r.status)} (código ${r.reservation_code})${b ? ` · ${ubicacion(b)}` : ''}${r.deposit_required ? ` · seña ${money(r.deposit_amount)} (${estadoSena(r.deposit_status, Boolean(r.deposit_proof_url))})` : ' · este local NO pide seña: no hay nada que pagar ni comprobante que subir'}`,
       );
     }
   } else {
@@ -363,7 +386,7 @@ async function contextoCliente(
   const { data: negocios } = await supabase
     .from('businesses')
     .select(
-      'name, neighborhood, city, deposit_enabled, deposit_amount, description, category:business_categories(name), reviews(rating)',
+      'name, address, neighborhood, city, latitude, longitude, deposit_enabled, deposit_amount, description, category:business_categories(name), reviews(rating)',
     )
     .eq('active', true)
     .limit(30);
@@ -377,7 +400,7 @@ async function contextoCliente(
         ? (notas.reduce((a, b) => a + b, 0) / notas.length).toFixed(1)
         : null;
       partes.push(
-        `- ${corto(n.name, 50)} (${cat}, ${corto(n.neighborhood, 30) || corto(n.city, 30)}) — ${prom ? `${prom} estrellas con ${notas.length} reseñas` : 'sin reseñas'}${n.deposit_enabled ? `, pide seña de ${money(n.deposit_amount)}` : ''} — ${corto(n.description, 110)}`,
+        `- ${corto(n.name, 50)} (${cat}) — ${ubicacion(n)} — ${prom ? `${prom} estrellas con ${notas.length} reseñas` : 'sin reseñas'}${n.deposit_enabled ? `, pide seña de ${money(n.deposit_amount)}` : ''} — ${corto(n.description, 110)}`,
       );
     }
   }

@@ -413,6 +413,34 @@ export function HelpBubble() {
 }
 
 /**
+ * Sólo los enlaces de Google Maps se vuelven tocables: son los únicos que el
+ * servidor le pasa al asistente (los arma con las coordenadas de cada local).
+ * Cualquier otra dirección web se muestra como texto, así un texto escrito
+ * por otro usuario no puede colar un enlace a cualquier sitio.
+ */
+const ENLACE_MAPA = /(https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?)/g;
+
+function conEnlaces(texto: string) {
+  // Si el modelo lo escribió en markdown, [texto](url), queda sólo la url.
+  const plano = texto.replace(/\[[^\]]*\]\((https:[^)\s]+)\)/g, '$1');
+  return plano.split(ENLACE_MAPA).map((trozo, k) =>
+    k % 2 === 1 ? (
+      <a
+        key={k}
+        href={trozo}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: 'inherit', fontWeight: 600, textDecoration: 'underline' }}
+      >
+        Ver en el mapa
+      </a>
+    ) : (
+      trozo
+    ),
+  );
+}
+
+/**
  * El modelo escribe en markdown aunque se le pida texto plano: negritas con
  * `**` y listas con guiones. Mostrado tal cual, el chat quedaba lleno de
  * asteriscos sueltos.
@@ -440,9 +468,9 @@ function TextoConFormato({ texto }: { texto: string }) {
             .split(/(\*\*[^*]+\*\*)/g)
             .map((trozo, j) =>
               trozo.startsWith('**') && trozo.endsWith('**') && trozo.length > 4 ? (
-                <strong key={j}>{trozo.slice(2, -2)}</strong>
+                <strong key={j}>{conEnlaces(trozo.slice(2, -2))}</strong>
               ) : (
-                trozo.replace(/\*\*/g, '')
+                <span key={j}>{conEnlaces(trozo.replace(/\*\*/g, ''))}</span>
               ),
             )}
         </span>
