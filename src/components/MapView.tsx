@@ -33,6 +33,7 @@ export function MapView({
   height = 250,
   hint = 'Tocá un pin para ver el negocio',
   conTarjeta = true,
+  enfocar = null,
 }: {
   businesses: BusinessWithMeta[];
   center?: Coords | null;
@@ -51,6 +52,11 @@ export function MapView({
    * propio negocio no tiene sentido (ya se está viendo), y se apaga.
    */
   conTarjeta?: boolean;
+  /**
+   * Negocio a mostrar apenas abre el mapa: se acerca a su pin y abre su
+   * tarjeta. Lo usa el enlace "Ver en el mapa" del asistente.
+   */
+  enfocar?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -333,6 +339,23 @@ export function MapView({
     }
   }, [elegido, businesses]);
 
+  // Enfocar un negocio pedido desde afuera (el asistente). Se espera a que el
+  // mapa tenga su tamaño real: antes de eso el acercamiento cae corrido.
+  useEffect(() => {
+    if (!enfocar) return;
+    const timer = setTimeout(() => {
+      const map = mapRef.current;
+      const marker = marcadores.current.get(enfocar);
+      if (!map || !marker) return;
+      map.invalidateSize();
+      setElegido(enfocar);
+      const zoom = 16;
+      const punto = map.project(marker.getLatLng(), zoom).add([0, map.getSize().y * 0.18]);
+      map.setView(map.unproject(punto, zoom), zoom, { animate: false });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [enfocar, businesses]);
+
   const negocioElegido = elegido ? businesses.find((b) => b.id === elegido) ?? null : null;
 
   const verTodos = () => {
@@ -447,8 +470,9 @@ export function MapView({
  * Tarjeta del negocio tocado, flotando sobre la parte de abajo del mapa.
  *
  * Reemplaza al globo de Leaflet, que era chico, tapaba los pines vecinos y
- * había que acertarle al texto para entrar. Acá toda la tarjeta es tocable
- * y muestra lo que se mira para decidir: logo, rubro, barrio y puntaje.
+ * había que acertarle al texto para entrar. Muestra lo que se mira para
+ * decidir (logo, rubro, barrio, puntaje) y las dos cosas que se hacen después:
+ * entrar al negocio o abrir el recorrido en la app de mapas del teléfono.
  */
 function TarjetaNegocio({
   negocio,
@@ -459,8 +483,25 @@ function TarjetaNegocio({
   onAbrir: () => void;
   onCerrar: () => void;
 }) {
-  const detalle = [negocio.category?.name, negocio.neighborhood].filter(Boolean).join(' · ');
-  const distancia = distanceLabel(negocio.distance_km);
+  const detalle = [negocio.category?.name, negocio.neighborhood, distanceLabel(negocio.distance_km)]
+    .filter(Boolean)
+    .join(' · ');
+  // Abre la app de mapas del teléfono con el recorrido hasta el local.
+  const comoLlegar = `https://www.google.com/maps/dir/?api=1&destination=${negocio.latitude},${negocio.longitude}`;
+  const boton = {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 11,
+    fontFamily: FONT.sans,
+    fontSize: 13,
+    fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    cursor: 'pointer',
+    textDecoration: 'none',
+  } as const;
   return (
     <div
       className="tarjeta-mapa"
@@ -474,34 +515,13 @@ function TarjetaNegocio({
         borderRadius: 16,
         boxShadow: '0 8px 24px rgba(61,50,43,.22)',
         padding: 10,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 11,
       }}
     >
-      <button
-        type="button"
-        onClick={onAbrir}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 11,
-          flex: 1,
-          minWidth: 0,
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          textAlign: 'left',
-          cursor: 'pointer',
-          font: 'inherit',
-          color: 'inherit',
-        }}
-      >
-        <BusinessLogo business={negocio} size={52} radius={12} />
-        <span style={{ flex: 1, minWidth: 0, display: 'block' }}>
-          <span
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+        <BusinessLogo business={negocio} size={48} radius={12} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
             style={{
-              display: 'block',
               fontFamily: FONT.sans,
               fontSize: 15,
               fontWeight: 800,
@@ -512,34 +532,21 @@ function TarjetaNegocio({
             }}
           >
             {negocio.name}
-          </span>
-          {detalle && (
-            <span style={{ display: 'block', fontSize: 12, color: C.sub, marginTop: 1 }}>{detalle}</span>
-          )}
-          <span
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginTop: 4,
-              fontSize: 12,
-              fontWeight: 800,
-              color: C.terracottaDark,
-            }}
-          >
-            Ver el negocio →
-            {distancia && <span style={{ color: C.sub, fontWeight: 600 }}>{distancia}</span>}
-          </span>
-        </span>
-      </button>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          </div>
+          {detalle && <div style={{ fontSize: 12, color: C.sub, marginTop: 1 }}>{detalle}</div>}
+          <div style={{ marginTop: 3 }}>
+            <RatingBadge rating={negocio.rating_avg} />
+          </div>
+        </div>
         <button
           type="button"
           onClick={onCerrar}
           aria-label="Cerrar"
           style={{
+            alignSelf: 'flex-start',
             width: 28,
             height: 28,
+            flexShrink: 0,
             borderRadius: 999,
             border: 'none',
             background: C.cream,
@@ -554,7 +561,26 @@ function TarjetaNegocio({
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
-        <RatingBadge rating={negocio.rating_avg} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={onAbrir}
+          style={{ ...boton, border: 'none', background: C.terracotta, color: '#fff' }}
+        >
+          Ver el negocio
+        </button>
+        <a
+          href={comoLlegar}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ ...boton, border: `1.5px solid ${C.line}`, background: C.surface, color: C.terracottaDark }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 11l18-8-8 18-2-8z" />
+          </svg>
+          Cómo llegar
+        </a>
       </div>
     </div>
   );

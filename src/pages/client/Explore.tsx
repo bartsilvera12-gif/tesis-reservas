@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAsync } from '@/hooks/useAsync';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { fetchBusinesses, fetchCategories } from '@/services/businesses';
@@ -46,6 +46,26 @@ export function Explore() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [mapMode, setMapMode] = useState(true);
   const [radio, setRadio] = useState<number | null>(RADIO_INICIAL);
+
+  /**
+   * "Ver en el mapa" del asistente llega como ?negocio=<id>. Se abre el mapa
+   * sin filtros (si no, el local podría quedar afuera del radio o de la
+   * categoría elegida) y se enfoca ese negocio. Después se saca el parámetro,
+   * así volver atrás o recargar no lo vuelve a forzar.
+   */
+  const [params, setParams] = useSearchParams();
+  const [enfocar, setEnfocar] = useState<string | null>(null);
+  useEffect(() => {
+    const id = params.get('negocio');
+    if (!id) return;
+    setMapMode(true);
+    setSearch('');
+    setDebounced('');
+    setCategoryId(null);
+    setRadio(null);
+    setEnfocar(id);
+    setParams({}, { replace: true });
+  }, [params, setParams]);
 
   /**
    * Sin ubicación no hay "cerca": el filtro se apaga solo.
@@ -195,6 +215,7 @@ export function Explore() {
               radiusKm={radioEfectivo}
               onSelect={(id) => navigate(`/app/negocio/${id}`)}
               height={340}
+              enfocar={enfocar}
               hint={
                 radioEfectivo
                   ? `${businesses.length} a menos de ${radioEfectivo} km`

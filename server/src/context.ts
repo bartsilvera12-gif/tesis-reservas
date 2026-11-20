@@ -46,11 +46,12 @@ const corto = (s: unknown, n = 120): string =>
     .slice(0, n);
 
 /**
- * Dónde queda un negocio: dirección, barrio y ciudad, y el enlace de Google
- * Maps armado con sus coordenadas. El enlace lo arma el servidor (nunca el
- * modelo) para que no pueda inventar uno que lleve a otro lado.
+ * Dónde queda un negocio: dirección, barrio y ciudad, y la marca que la app
+ * convierte en el botón "Ver en el mapa" (abre el mapa de AJ Spots con ese
+ * negocio). La arma el servidor, nunca el modelo.
  */
 function ubicacion(n: {
+  id?: string;
   address?: string | null;
   neighborhood?: string | null;
   city?: string | null;
@@ -61,8 +62,8 @@ function ubicacion(n: {
     .filter(Boolean)
     .join(', ');
   const mapa =
-    n.latitude != null && n.longitude != null
-      ? ` · Mapa: https://www.google.com/maps/search/?api=1&query=${n.latitude},${n.longitude}`
+    n.id && n.latitude != null && n.longitude != null
+      ? ` · Mapa: ajspots:mapa/${n.id}`
       : ' · sin ubicación en el mapa';
   return `Dirección: ${texto || 'sin cargar'}${mapa}`;
 }
@@ -363,7 +364,7 @@ async function contextoCliente(
   const { data: reservas } = await supabase
     .from('reservations')
     .select(
-      'reservation_date, reservation_time, party_size, status, reservation_code, deposit_required, deposit_amount, deposit_status, deposit_proof_url, business:businesses(name, address, neighborhood, city, latitude, longitude), catalog_item:catalog_items(name), staff:staff(name)',
+      'reservation_date, reservation_time, party_size, status, reservation_code, deposit_required, deposit_amount, deposit_status, deposit_proof_url, business:businesses(id, name, address, neighborhood, city, latitude, longitude), catalog_item:catalog_items(name), staff:staff(name)',
     )
     .eq('client_id', clientId)
     .order('reservation_date', { ascending: false })
@@ -386,7 +387,7 @@ async function contextoCliente(
   const { data: negocios } = await supabase
     .from('businesses')
     .select(
-      'name, address, neighborhood, city, latitude, longitude, deposit_enabled, deposit_amount, description, category:business_categories(name), reviews(rating)',
+      'id, name, address, neighborhood, city, latitude, longitude, deposit_enabled, deposit_amount, description, category:business_categories(name), reviews(rating)',
     )
     .eq('active', true)
     .limit(30);

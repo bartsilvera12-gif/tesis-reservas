@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
   asistenteDisponible,
@@ -44,6 +44,7 @@ export function abrirAsistente() {
 export function HelpBubble() {
   const { profile } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [abierto, setAbierto] = useState(false);
   const [mensajes, setMensajes] = useState<MensajeChat[]>([]);
   const [entrada, setEntrada] = useState('');
@@ -304,7 +305,13 @@ export function HelpBubble() {
                       wordBreak: 'break-word',
                     }}
                   >
-                    {(m.role === 'assistant' ? <TextoConFormato texto={m.content} /> : m.content) ||
+                    {(m.role === 'assistant' ? <TextoConFormato
+                        texto={m.content}
+                        onMapa={(id) => {
+                          setAbierto(false);
+                          navigate(`/app/explorar?negocio=${id}`);
+                        }}
+                      /> : m.content) ||
                       (pensando && i === mensajes.length - 1 ? (
                         <span
                           style={{
@@ -413,27 +420,45 @@ export function HelpBubble() {
 }
 
 /**
- * Sólo los enlaces de Google Maps se vuelven tocables: son los únicos que el
- * servidor le pasa al asistente (los arma con las coordenadas de cada local).
- * Cualquier otra dirección web se muestra como texto, así un texto escrito
- * por otro usuario no puede colar un enlace a cualquier sitio.
+ * "Ver en el mapa": el servidor le pasa al asistente, por cada negocio, una
+ * marca `ajspots:mapa/<id>` y el modelo la copia en la respuesta. Acá se
+ * convierte en un botón que abre el mapa de la app con ese negocio. No es una
+ * dirección web: aunque alguien escribiera una igual en una reseña, lo único
+ * que puede hacer es abrir el mapa propio de la app.
  */
-const ENLACE_MAPA = /(https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?)/g;
+const ENLACE_MAPA = /ajspots:mapa\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
 
-function conEnlaces(texto: string) {
-  // Si el modelo lo escribió en markdown, [texto](url), queda sólo la url.
-  const plano = texto.replace(/\[[^\]]*\]\((https:[^)\s]+)\)/g, '$1');
+function conEnlaces(texto: string, onMapa: (id: string) => void) {
+  // Si el modelo lo escribió en markdown, [texto](marca), queda sólo la marca.
+  const plano = texto.replace(/\[[^\]]*\]\((ajspots:[^)\s]+)\)/g, '$1');
   return plano.split(ENLACE_MAPA).map((trozo, k) =>
     k % 2 === 1 ? (
-      <a
+      <button
         key={k}
-        href={trozo}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: 'inherit', fontWeight: 600, textDecoration: 'underline' }}
+        type="button"
+        onClick={() => onMapa(trozo)}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+          margin: '4px 0',
+          padding: '6px 11px',
+          borderRadius: 999,
+          border: 'none',
+          background: C.terracotta,
+          color: '#fff',
+          font: 'inherit',
+          fontSize: 12.5,
+          fontWeight: 800,
+          cursor: 'pointer',
+        }}
       >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" />
+          <circle cx="12" cy="10" r="2.5" />
+        </svg>
         Ver en el mapa
-      </a>
+      </button>
     ) : (
       trozo
     ),
@@ -449,7 +474,7 @@ function conEnlaces(texto: string) {
  * modelo que lee datos escritos por otros usuarios, y así nada de lo que
  * diga puede terminar interpretado como HTML.
  */
-function TextoConFormato({ texto }: { texto: string }) {
+function TextoConFormato({ texto, onMapa }: { texto: string; onMapa: (id: string) => void }) {
   if (!texto) return null;
 
   const lineas = texto.split('\n').map((linea) =>
@@ -468,9 +493,9 @@ function TextoConFormato({ texto }: { texto: string }) {
             .split(/(\*\*[^*]+\*\*)/g)
             .map((trozo, j) =>
               trozo.startsWith('**') && trozo.endsWith('**') && trozo.length > 4 ? (
-                <strong key={j}>{conEnlaces(trozo.slice(2, -2))}</strong>
+                <strong key={j}>{conEnlaces(trozo.slice(2, -2), onMapa)}</strong>
               ) : (
-                <span key={j}>{conEnlaces(trozo.replace(/\*\*/g, ''))}</span>
+                <span key={j}>{conEnlaces(trozo.replace(/\*\*/g, ''), onMapa)}</span>
               ),
             )}
         </span>
