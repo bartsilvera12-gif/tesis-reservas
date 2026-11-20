@@ -40,12 +40,25 @@ export async function prepararImagen(file: File, maxLado: number): Promise<File>
     throw new ErrorImagen('La imagen es demasiado grande. Probá con otra.');
   }
 
-  const bitmap = await decodificar(file);
+  let img: Decodificada;
+  try {
+    img = await decodificar(file);
+  } catch {
+    // Ningún decodificador del WebView la pudo abrir. Si igual es un formato
+    // que Storage acepta y no pesa demasiado, se sube tal cual: el que la mira
+    // después (el dueño, en el navegador) sí suele poder abrirla.
+    if (TIPOS_DIRECTOS.includes(file.type) && file.size <= MAX_DIRECTO) return file;
+    throw new ErrorImagen(
+      'No pudimos abrir esa imagen. Si tu celular guarda las fotos en HEIC, ' +
+        'cambiá el formato a JPG en los ajustes de la cámara, o mandá una captura ' +
+        'de pantalla del comprobante.',
+    );
+  }
 
   try {
-    const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
-    const ancho = Math.max(1, Math.round(bitmap.width * escala));
-    const alto = Math.max(1, Math.round(bitmap.height * escala));
+    const escala = Math.min(1, maxLado / Math.max(img.ancho, img.alto));
+    const ancho = Math.max(1, Math.round(img.ancho * escala));
+    const alto = Math.max(1, Math.round(img.alto * escala));
 
     const lienzo = document.createElement('canvas');
     lienzo.width = ancho;
@@ -54,7 +67,7 @@ export async function prepararImagen(file: File, maxLado: number): Promise<File>
     const ctx = lienzo.getContext('2d');
     if (!ctx) throw new ErrorImagen('No pudimos procesar la imagen en este dispositivo.');
 
-    ctx.drawImage(bitmap, 0, 0, ancho, alto);
+    ctx.drawImage(img.fuente, 0, 0, ancho, alto);
 
     // Los logos suelen ser PNG con fondo transparente y pasarlos a JPEG les
     // pone un fondo negro. Para esos se mantiene PNG; el resto (fotos) va a
@@ -69,26 +82,45 @@ export async function prepararImagen(file: File, maxLado: number): Promise<File>
     const extension = tipo === 'image/png' ? 'png' : 'jpg';
     return new File([blob], `imagen.${extension}`, { type: tipo });
   } finally {
-    bitmap.close();
+    img.cerrar();
   }
 }
 
+/** Formatos que Storage acepta sin procesar, y su tope (el mismo de storage.ts). */
+const TIPOS_DIRECTOS = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_DIRECTO = 5 * 1024 * 1024;
+
+interface Decodificada {
+  fuente: CanvasImageSource;
+  ancho: number;
+  alto: number;
+  cerrar: () => void;
+}
+
 /**
- * Decodifica el archivo a un bitmap.
+ * Decodifica el archivo para poder dibujarlo en un canvas.
  *
- * `createImageBitmap` trabaja fuera del hilo principal, así que la pantalla
- * sigue respondiendo mientras decodifica. Si el formato no se entiende (el
- * caso típico es HEIC, que algunos celulares graban por defecto y Chrome no
- * abre) se corta acá con un mensaje claro, en vez de dejar un recuadro vacío
- * que parece que la app se colgó.
+ * Primero con `createImageBitmap`, que trabaja fuera del hilo principal. En
+ * algunos WebView de Android falla con fotos que el navegador sí abre (fotos
+ * muy grandes, JPEG con perfiles de color raros), así que si falla se prueba
+ * con un <img> común antes de rendirse. HEIC no lo abre ninguno de los dos.
  */
-async function decodificar(file: File): Promise<ImageBitmap> {
+async function decodificar(file: File): Promise<Decodificada> {
   try {
-    return await createImageBitmap(file);
+    const bitmap = await createImageBitmap(file);
+    return { fuente: bitmap, ancho: bitmap.width, alto: bitmap.height, cerrar: () => bitmap.close() };
   } catch {
-    throw new ErrorImagen(
-      'No pudimos abrir esa imagen. Si tu celular guarda las fotos en HEIC, ' +
-        'cambiá el formato a JPG en los ajustes de la cámara o elegí otra.',
-    );
+    const url = URL.createObjectURL(file);
+    try {
+      const el = new Image();
+      el.decoding = 'async';
+      el.src = url;
+      await el.decode();
+      if (!el.naturalWidth) throw new Error('sin tamaño');
+      return { fuente: el, ancho: el.naturalWidth, alto: el.naturalHeight, cerrar: () => URL.revokeObjectURL(url) };
+    } catch (e) {
+      URL.revokeObjectURL(url);
+      throw e;
+    }
   }
 }
