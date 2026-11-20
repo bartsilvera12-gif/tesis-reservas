@@ -893,7 +893,7 @@ export function Reserve() {
             >
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 hidden
                 onChange={(e) => {
                   void elegirComprobante(e.target.files?.[0]);

@@ -33,7 +33,10 @@ export class ErrorImagen extends Error {}
  * @returns un File nuevo, listo para subir y para usar de vista previa
  */
 export async function prepararImagen(file: File, maxLado: number): Promise<File> {
-  if (!file.type.startsWith('image/')) {
+  // Algunos celulares entregan las fotos HEIC sin tipo o como
+  // application/octet-stream, así que se mira también el contenido.
+  const heic = await esHeic(file);
+  if (!heic && !file.type.startsWith('image/')) {
     throw new ErrorImagen('Ese archivo no es una imagen.');
   }
   if (file.size > MAX_CRUDO) {
@@ -42,16 +45,14 @@ export async function prepararImagen(file: File, maxLado: number): Promise<File>
 
   let img: Decodificada;
   try {
-    img = await decodificar(file);
+    img = await decodificar(file, heic);
   } catch {
     // Ningún decodificador del WebView la pudo abrir. Si igual es un formato
     // que Storage acepta y no pesa demasiado, se sube tal cual: el que la mira
     // después (el dueño, en el navegador) sí suele poder abrirla.
     if (TIPOS_DIRECTOS.includes(file.type) && file.size <= MAX_DIRECTO) return file;
     throw new ErrorImagen(
-      'No pudimos abrir esa imagen. Si tu celular guarda las fotos en HEIC, ' +
-        'cambiá el formato a JPG en los ajustes de la cámara, o mandá una captura ' +
-        'de pantalla del comprobante.',
+      'No pudimos abrir esa imagen. Probá con otra foto o con una captura de pantalla.',
     );
   }
 
@@ -98,14 +99,43 @@ interface Decodificada {
 }
 
 /**
+ * ¿Es una foto HEIC/HEIF? Es el formato por defecto de muchos iPhone y de
+ * varios Samsung, y el WebView de Android no lo sabe abrir. Se reconoce por
+ * el tipo, por la extensión o, si ninguno sirve, por la cabecera del archivo
+ * ("ftyp" + marca heic/heix/mif1...).
+ */
+async function esHeic(file: File): Promise<boolean> {
+  if (/^image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name)) return true;
+  try {
+    const cab = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    const txt = String.fromCharCode(...cab.slice(4, 12));
+    return /^ftyp(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(txt);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pasa una HEIC a bitmap con libheif (WebAssembly). La librería pesa unos
+ * 3 MB, así que se carga sólo la primera vez que alguien elige una HEIC.
+ */
+async function decodificarHeic(file: File): Promise<Decodificada> {
+  const { heicTo } = await import('heic-to');
+  const bitmap = await heicTo({ blob: file, type: 'bitmap' });
+  return { fuente: bitmap, ancho: bitmap.width, alto: bitmap.height, cerrar: () => bitmap.close() };
+}
+
+/**
  * Decodifica el archivo para poder dibujarlo en un canvas.
  *
  * Primero con `createImageBitmap`, que trabaja fuera del hilo principal. En
  * algunos WebView de Android falla con fotos que el navegador sí abre (fotos
  * muy grandes, JPEG con perfiles de color raros), así que si falla se prueba
- * con un <img> común antes de rendirse. HEIC no lo abre ninguno de los dos.
+ * con un <img> común antes de rendirse. HEIC no lo abre ninguno de los dos:
+ * esas van directo a libheif.
  */
-async function decodificar(file: File): Promise<Decodificada> {
+async function decodificar(file: File, heic: boolean): Promise<Decodificada> {
+  if (heic) return decodificarHeic(file);
   try {
     const bitmap = await createImageBitmap(file);
     return { fuente: bitmap, ancho: bitmap.width, alto: bitmap.height, cerrar: () => bitmap.close() };

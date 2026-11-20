@@ -185,7 +185,7 @@ export function Profile() {
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           hidden
           onChange={(e) => {
             void onPickAvatar(e.target.files?.[0]);

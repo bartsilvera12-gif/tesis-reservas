@@ -243,7 +243,7 @@ function IdentityCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast:
       <input
         ref={coverRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.heic,.heif"
         hidden
         onChange={(e) => {
           void upload(e.target.files?.[0], 'cover');
@@ -253,7 +253,7 @@ function IdentityCard({ onSaved, toast }: { onSaved: () => Promise<void>; toast:
       <input
         ref={logoRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.heic,.heif"
         hidden
         onChange={(e) => {
           void upload(e.target.files?.[0], 'logo');

@@ -709,7 +709,7 @@ function ImagePicker({
       >
         <input
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           hidden
           onChange={(e) => {
             void elegir(e.target.files?.[0]);
