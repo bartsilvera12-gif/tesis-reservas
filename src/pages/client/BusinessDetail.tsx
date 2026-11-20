@@ -624,6 +624,7 @@ function InfoTab({
             businesses={[negocio]}
             center={null}
             onSelect={() => {}}
+            conTarjeta={false}
             height={170}
             hint={negocio.neighborhood ?? 'Ñemby'}
           />

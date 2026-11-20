@@ -188,3 +188,31 @@ textarea::placeholder {
     scroll-behavior: auto !important;
   }
 }
+
+/* Mapa: la tarjeta del negocio sube suave y el pin elegido aparece con un
+   pequeño rebote, para que se note cuál se tocó. */
+.tarjeta-mapa {
+  animation: tarjeta-mapa-entra 0.22s cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes tarjeta-mapa-entra {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.pin-negocio--activo .pin-negocio__caja {
+  animation: pin-salta 0.28s cubic-bezier(0.23, 1, 0.32, 1);
+  transform-origin: 50% 100%;
+}
+@keyframes pin-salta {
+  from { transform: scale(0.8); }
+  to { transform: scale(1); }
+}
+.leaflet-container .leaflet-control-attribution {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 6px 0 0 0;
+}
+
+/* Fondo del mapa más suave: OSM trae colores fuertes y mucho texto que
+   competían con los pines. */
+.leaflet-tile-pane {
+  filter: saturate(0.55) sepia(0.12) brightness(1.04) contrast(0.95);
+}

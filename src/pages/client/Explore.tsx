@@ -194,6 +194,7 @@ export function Explore() {
               center={coords}
               radiusKm={radioEfectivo}
               onSelect={(id) => navigate(`/app/negocio/${id}`)}
+              height={340}
               hint={
                 radioEfectivo
                   ? `${businesses.length} a menos de ${radioEfectivo} km`
@@ -201,23 +202,6 @@ export function Explore() {
               }
             />
           </Suspense>
-
-          {fueraDeNemby && (
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                color: C.sub,
-                lineHeight: 1.45,
-                background: C.disabledBg,
-                borderRadius: 10,
-                padding: '9px 12px',
-              }}
-            >
-              Estás fuera de {CIUDAD}. Por ahora la app reúne sólo los negocios de {CIUDAD},
-              así que te mostramos todos.
-            </div>
-          )}
 
           {denied && (
             <div

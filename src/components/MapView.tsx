@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { C } from '@/lib/theme';
+import { C, FONT } from '@/lib/theme';
+import { BusinessLogo } from '@/components/BusinessCard';
+import { RatingBadge } from '@/components/ui';
 import { distanceLabel } from '@/lib/format';
 import type { BusinessWithMeta } from '@/types/db';
 import type { Coords } from '@/services/businesses';
@@ -30,6 +32,7 @@ export function MapView({
   onMapClick,
   height = 250,
   hint = 'Tocá un pin para ver el negocio',
+  conTarjeta = true,
 }: {
   businesses: BusinessWithMeta[];
   center?: Coords | null;
@@ -43,6 +46,11 @@ export function MapView({
   onMapClick?: (coords: Coords) => void;
   height?: number;
   hint?: string;
+  /**
+   * Al tocar un pin se abre una tarjeta con el negocio. En la ficha del
+   * propio negocio no tiene sentido (ya se está viendo), y se apaga.
+   */
+  conTarjeta?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -56,6 +64,14 @@ export function MapView({
   onMapClickRef.current = onMapClick;
 
   const didFit = useRef(false);
+
+  /** Negocio tocado: se muestra en la tarjeta de abajo y su pin se agranda. */
+  const [elegido, setElegido] = useState<string | null>(null);
+  const marcadores = useRef(new Map<string, L.Marker>());
+  const conTarjetaRef = useRef(conTarjeta);
+  conTarjetaRef.current = conTarjeta;
+  /** Encuadre de todos los pines, para el botón de volver a verlos. */
+  const encuadreRef = useRef<L.LatLngBounds | null>(null);
 
   /** Aviso corto cuando se toca fuera de Ñemby en el selector de ubicación. */
   const [aviso, setAviso] = useState<string | null>(null);
@@ -88,6 +104,8 @@ export function MapView({
       // reencuadra con fitBounds().
     }).setView([NEMBY_CENTRO.lat, NEMBY_CENTRO.lng], 14);
 
+    // Mapa de OpenStreetMap. Los colores se suavizan por CSS (.leaflet-tile-pane
+    // en index.css) para que el fondo acompañe la paleta y los pines resalten.
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
       maxZoom: 19,
@@ -125,7 +143,11 @@ export function MapView({
     mapRef.current = map;
 
     map.on('click', (e: L.LeafletMouseEvent) => {
-      if (!onMapClickRef.current) return;
+      if (!onMapClickRef.current) {
+        // Tocar el mapa fuera de un pin cierra la tarjeta.
+        setElegido(null);
+        return;
+      }
       // 6 decimales son ~10 cm: más no aporta y no entraba en el campo.
       const punto = { lat: redondear(e.latlng.lat), lng: redondear(e.latlng.lng) };
       // En el selector, un local fuera de Ñemby no se puede guardar (la base
@@ -137,16 +159,6 @@ export function MapView({
         return;
       }
       onMapClickRef.current(punto);
-    });
-
-    // Tocar el globo abre el negocio. Se engancha una sola vez sobre el globo
-    // que Leaflet reutiliza, en vez de por marcador: así no quedan listeners
-    // sueltos cada vez que se redibujan los pines.
-    map.on('popupopen', (e: L.PopupEvent) => {
-      const nodo = e.popup.getElement()?.querySelector('[data-negocio]');
-      const id = nodo?.getAttribute('data-negocio');
-      if (!nodo || !id) return;
-      nodo.addEventListener('click', () => onSelectRef.current(id), { once: true });
     });
 
     // El contenedor arranca con tamaño 0 dentro de flex: hay que avisarle.
@@ -183,6 +195,8 @@ export function MapView({
     // muchos y muy juntos, así que van como puntos.
     const eligiendoUbicacion = Boolean(onMapClickRef.current);
 
+    marcadores.current.clear();
+
     for (const b of located) {
       const icon = eligiendoUbicacion
         ? L.divIcon({
@@ -196,52 +210,30 @@ export function MapView({
               `<div style="width:9px;height:9px;background:${C.terracottaDark};border:2px solid #fff;border-radius:50%;margin-top:2px;box-shadow:0 2px 5px rgba(0,0,0,.3)"></div>` +
               '</div>',
           })
-        : /**
-           * Un punto, no una pastilla con el nombre.
-           *
-           * Con los nombres puestos, cuatro locales de la misma zona se
-           * tapaban entre sí y no se leía ninguno — justo donde más hace falta
-           * el mapa. El nombre aparece al tocar, que además es lo que uno hace
-           * para averiguar qué es ese punto.
-           *
-           * Los 34px de caja son el área tocable: apuntar a un punto chico en
-           * un mapa que se mueve es difícil de por sí.
-           */
-          L.divIcon({
-            className: '',
-            iconSize: [34, 34],
-            iconAnchor: [17, 17],
-            html:
-              '<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer">' +
-              `<div style="width:15px;height:15px;background:${C.terracotta};border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(61,50,43,.4)"></div>` +
-              '</div>',
-          });
+        : iconoPin(b.category?.slug, false);
 
       const marker = L.marker([b.latitude as number, b.longitude as number], {
         icon,
         // El pin del selector no debe robarle el toque al mapa: mover el pin
         // es justamente lo que se está haciendo ahí.
         interactive: !eligiendoUbicacion,
+        keyboard: !eligiendoUbicacion,
+        title: b.name,
       }).addTo(layer);
 
       if (eligiendoUbicacion) continue;
 
-      const detalle = [b.category?.name, distanceLabel(b.distance_km)]
-        .filter(Boolean)
-        .join(' · ');
-
-      marker.bindPopup(
-        '<div data-negocio="' +
-          b.id +
-          '" style="cursor:pointer;min-width:130px">' +
-          `<div style="font:800 13.5px Figtree,system-ui,sans-serif;color:${C.ink}">${escapeHtml(b.name)}</div>` +
-          (detalle
-            ? `<div style="font:600 11.5px Figtree,system-ui,sans-serif;color:${C.sub};margin-top:2px">${escapeHtml(detalle)}</div>`
-            : '') +
-          `<div style="font:800 12px Figtree,system-ui,sans-serif;color:${C.terracottaDark};margin-top:6px">Ver el negocio →</div>` +
-          '</div>',
-        { closeButton: false, offset: [0, -6] },
-      );
+      marcadores.current.set(b.id, marker);
+      marker.on('click', () => {
+        if (!conTarjetaRef.current) return;
+        setElegido(b.id);
+        // Acerca un poco (en el centro hay pines muy juntos) y deja el pin
+        // por encima del medio, para que la tarjeta de abajo no lo tape.
+        const zoom = Math.max(map.getZoom(), 15);
+        const alto = map.getSize().y;
+        const punto = map.project(marker.getLatLng(), zoom).add([0, alto * 0.18]);
+        map.flyTo(map.unproject(punto, zoom), zoom, { duration: 0.45 });
+      });
     }
 
     // El área que se está mirando. Se dibuja antes que el punto azul para que
@@ -307,6 +299,7 @@ export function MapView({
         if (center) points.push([center.lat, center.lng]);
 
         if (points.length > 1) {
+          encuadreRef.current = L.latLngBounds(points);
           map.fitBounds(L.latLngBounds(points), {
             padding: [36, 36],
             maxZoom: 15,
@@ -319,8 +312,35 @@ export function MapView({
       didFit.current = true;
     }
 
+    if (circle) encuadreRef.current = circle.getBounds();
+
     setTimeout(() => map.invalidateSize(), 120);
   }, [businesses, center, radiusKm]);
+
+  // Si el negocio elegido deja de estar en la lista (cambió el filtro), se
+  // cierra la tarjeta.
+  useEffect(() => {
+    if (elegido && !businesses.some((b) => b.id === elegido)) setElegido(null);
+  }, [businesses, elegido]);
+
+  // El pin elegido se agranda y pasa al frente; los demás vuelven a su tamaño.
+  useEffect(() => {
+    for (const [id, marker] of marcadores.current) {
+      const b = businesses.find((x) => x.id === id);
+      const activo = id === elegido;
+      marker.setIcon(iconoPin(b?.category?.slug, activo));
+      marker.setZIndexOffset(activo ? 1000 : 0);
+    }
+  }, [elegido, businesses]);
+
+  const negocioElegido = elegido ? businesses.find((b) => b.id === elegido) ?? null : null;
+
+  const verTodos = () => {
+    const map = mapRef.current;
+    if (!map || !encuadreRef.current) return;
+    setElegido(null);
+    map.flyToBounds(encuadreRef.current, { padding: [36, 36], maxZoom: 15, duration: 0.5 });
+  };
 
   return (
     <div
@@ -341,22 +361,62 @@ export function MapView({
       }}
     >
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 10,
-          left: 12,
-          fontSize: 10.5,
-          color: C.sub,
-          background: 'rgba(255,255,255,.85)',
-          borderRadius: 6,
-          padding: '3px 8px',
-          zIndex: 500,
-          pointerEvents: 'none',
-        }}
-      >
-        {hint}
-      </div>
+      {!negocioElegido && hint && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 10,
+            left: 10,
+            fontSize: 11.5,
+            fontWeight: 600,
+            color: C.ink,
+            background: 'rgba(255,255,255,.94)',
+            borderRadius: 999,
+            padding: '6px 11px',
+            zIndex: 500,
+            pointerEvents: 'none',
+            boxShadow: '0 2px 8px rgba(61,50,43,.12)',
+          }}
+        >
+          {hint}
+        </div>
+      )}
+
+      {!onMapClick && businesses.length > 1 && (
+        <button
+          type="button"
+          onClick={verTodos}
+          aria-label="Ver todos los negocios"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 500,
+            width: 36,
+            height: 36,
+            borderRadius: 12,
+            border: 'none',
+            background: 'rgba(255,255,255,.96)',
+            boxShadow: '0 2px 8px rgba(61,50,43,.16)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+          </svg>
+        </button>
+      )}
+
+      {negocioElegido && (
+        <TarjetaNegocio
+          negocio={negocioElegido}
+          onAbrir={() => onSelect(negocioElegido.id)}
+          onCerrar={() => setElegido(null)}
+        />
+      )}
       {aviso && (
         <div
           role="status"
@@ -381,6 +441,180 @@ export function MapView({
       )}
     </div>
   );
+}
+
+/**
+ * Tarjeta del negocio tocado, flotando sobre la parte de abajo del mapa.
+ *
+ * Reemplaza al globo de Leaflet, que era chico, tapaba los pines vecinos y
+ * había que acertarle al texto para entrar. Acá toda la tarjeta es tocable
+ * y muestra lo que se mira para decidir: logo, rubro, barrio y puntaje.
+ */
+function TarjetaNegocio({
+  negocio,
+  onAbrir,
+  onCerrar,
+}: {
+  negocio: BusinessWithMeta;
+  onAbrir: () => void;
+  onCerrar: () => void;
+}) {
+  const detalle = [negocio.category?.name, negocio.neighborhood].filter(Boolean).join(' · ');
+  const distancia = distanceLabel(negocio.distance_km);
+  return (
+    <div
+      className="tarjeta-mapa"
+      style={{
+        position: 'absolute',
+        left: 10,
+        right: 10,
+        bottom: 20,
+        zIndex: 600,
+        background: C.surface,
+        borderRadius: 16,
+        boxShadow: '0 8px 24px rgba(61,50,43,.22)',
+        padding: 10,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 11,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onAbrir}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 11,
+          flex: 1,
+          minWidth: 0,
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          textAlign: 'left',
+          cursor: 'pointer',
+          font: 'inherit',
+          color: 'inherit',
+        }}
+      >
+        <BusinessLogo business={negocio} size={52} radius={12} />
+        <span style={{ flex: 1, minWidth: 0, display: 'block' }}>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: FONT.sans,
+              fontSize: 15,
+              fontWeight: 800,
+              color: C.ink,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {negocio.name}
+          </span>
+          {detalle && (
+            <span style={{ display: 'block', fontSize: 12, color: C.sub, marginTop: 1 }}>{detalle}</span>
+          )}
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 4,
+              fontSize: 12,
+              fontWeight: 800,
+              color: C.terracottaDark,
+            }}
+          >
+            Ver el negocio →
+            {distancia && <span style={{ color: C.sub, fontWeight: 600 }}>{distancia}</span>}
+          </span>
+        </span>
+      </button>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+        <button
+          type="button"
+          onClick={onCerrar}
+          aria-label="Cerrar"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 999,
+            border: 'none',
+            background: C.cream,
+            color: C.sub,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+        <RatingBadge rating={negocio.rating_avg} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Color e ícono de cada rubro, para reconocerlos en el mapa sin tocarlos.
+ * Los íconos son trazos simples en SVG (24x24), dibujados en blanco.
+ */
+const RUBRO: Record<string, { color: string; icono: string }> = {
+  restaurantes: {
+    color: '#C46F52',
+    icono: '<path d="M7 3v8a2 2 0 0 0 2 2v8M11 3v8a2 2 0 0 1-2 2M9 3v6"/><path d="M17 21V3c-2 1.5-3 4-3 7v3h3"/>',
+  },
+  peluquerias: {
+    color: '#8A5E86',
+    icono: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>',
+  },
+  'spa-de-unas': {
+    color: '#4F8A7C',
+    icono: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 1.8 1.8.7-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/>',
+  },
+  lavaderos: {
+    color: '#3F7AA8',
+    icono: '<path d="M5 17h14v-4l-2-5H7l-2 5z"/><path d="M5 13h14"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/>',
+  },
+  hospedajes: {
+    color: '#B07F2E',
+    icono: '<path d="M3 20V6M3 16h18v4M21 16v-4a3 3 0 0 0-3-3h-7v7"/><circle cx="7" cy="11.5" r="2"/>',
+  },
+};
+
+const RUBRO_GENERICO = {
+  color: C.terracottaDark,
+  icono: '<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+};
+
+/**
+ * Pin en forma de gota con el ícono del rubro.
+ *
+ * La caja es más grande que el dibujo a propósito: es el área tocable, y
+ * acertarle a un pin chico en un mapa que se mueve cuesta. El elegido se
+ * agranda para que se note cuál es el de la tarjeta.
+ */
+function iconoPin(slug: string | null | undefined, activo: boolean): L.DivIcon {
+  const { color, icono } = (slug && RUBRO[slug]) || RUBRO_GENERICO;
+  const lado = activo ? 42 : 32;
+  const glifo = activo ? 20 : 16;
+  const caja = lado + 12;
+  return L.divIcon({
+    className: 'pin-negocio' + (activo ? ' pin-negocio--activo' : ''),
+    iconSize: [caja, caja + 4],
+    // La punta de la gota (cuadrado girado 45°) queda a lado/2 + lado·0,707 del borde de arriba.
+    iconAnchor: [caja / 2, Math.round(2 + lado / 2 + lado * 0.707)],
+    html:
+      `<div class="pin-negocio__caja" style="width:${caja}px;height:${caja + 4}px;display:flex;align-items:flex-start;justify-content:center;cursor:pointer">` +
+      `<div style="width:${lado}px;height:${lado}px;margin-top:2px;background:${color};border:${activo ? 3 : 2.5}px solid #fff;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);box-shadow:0 ${activo ? 6 : 3}px ${activo ? 14 : 8}px rgba(61,50,43,${activo ? 0.45 : 0.35});display:flex;align-items:center;justify-content:center">` +
+      `<svg width="${glifo}" height="${glifo}" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(45deg)">${icono}</svg>` +
+      '</div></div>',
+  });
 }
 
 /** Los nombres van dentro de un divIcon con HTML: hay que escaparlos. */
