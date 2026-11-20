@@ -134,6 +134,7 @@ export const AYUDA_CLIENTE: SeccionAyuda[] = [
       'Escribile como a una persona: *“¿Cuál es mi próxima reserva?”* o *“¿Cómo funcionan las señas?”*.',
       'Te explica cómo usar la app y en qué pantalla hacer cada cosa.',
       'No puede reservar ni cancelar por vos.',
+      'Solo responde sobre AJ Spots y según dónde estés: como cliente, sobre tus reservas y los negocios; en el panel, sobre tu negocio. Otros temas no los contesta.',
       'Las respuestas las genera un servicio de inteligencia artificial externo: solo recibe tu consulta y los datos de tu cuenta necesarios. No escribas contraseñas ni datos de tarjetas.',
     ],
     imagen: 'c14-asistente-respuesta',
